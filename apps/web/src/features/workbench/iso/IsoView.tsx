@@ -445,7 +445,7 @@ function PinHover({ cam, hover, from, rubber, pins, pinAt, pinPos }: { cam: Cam;
   );
 }
 
-type Drag = { x: number; y: number; mode: 'orbit' | 'pan' | 'part' | 'wire'; th: number; ph: number; vx: number; vy: number; moved: boolean; pick: Element | null; part?: { id: string; board: boolean; off0: [number, number]; offB: [number, number] }; from?: string };
+type Drag = { x: number; y: number; mode: 'orbit' | 'pan' | 'part' | 'wire' | 'end'; th: number; ph: number; vx: number; vy: number; moved: boolean; pick: Element | null; part?: { id: string; board: boolean; off0: [number, number]; offB: [number, number] }; from?: string; end?: { wire: string; side: 'a' | 'b'; orig: string } };
 
 export default function IsoView() {
   const doc = useBench(s => s.doc), live = useBench(s => s.live), sel = useBench(s => s.sel);
@@ -557,7 +557,8 @@ export default function IsoView() {
     const [x, y] = unproject(cam, sx, sy, 0);
     return { x, y, z: 0 };
   };
-  const pinUnder = (e: { clientX: number; clientY: number }) => document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-pin]')?.getAttribute('data-pin') ?? null;
+  // Looks through the stack so a wire-end handle sitting on a pin never hides the pin from the drop test.
+  const pinUnder = (e: { clientX: number; clientY: number }) => document.elementsFromPoint(e.clientX, e.clientY).find(el => el.hasAttribute('data-pin'))?.getAttribute('data-pin') ?? null;
 
   const down = (e: React.PointerEvent) => {
     const t = e.target as Element;
@@ -568,7 +569,11 @@ export default function IsoView() {
     }
     const pan = e.button === 2 || e.shiftKey || e.button === 1, pin = t.closest('[data-pin]')?.getAttribute('data-pin'), partEl = t.closest('[data-part]');
     const d: Drag = { x: e.clientX, y: e.clientY, mode: pan ? 'pan' : 'orbit', th: angle.th, ph: angle.ph, vx: view.x, vy: view.y, moved: false, pick: t.closest('[data-part], [data-wire]') };
-    if (!pan && pin) { d.mode = 'wire'; d.from = pin; }
+    const endEl = t.closest('[data-end]');
+    if (!pan && endEl) {
+      const [wire, side] = endEl.getAttribute('data-end')!.split('|') as [string, 'a' | 'b'], w = doc.wires.find(x => x.id === wire);
+      if (w) { d.mode = 'end'; d.end = { wire, side, orig: w[side] }; }
+    } else if (!pan && pin) { d.mode = 'wire'; d.from = pin; }
     else if (!pan && partEl) {
       const id = partEl.getAttribute('data-part')!, p = scene.placed.find(q => q.inst.id === id);
       if (p && p.inst.type !== 'breadboard') {
@@ -602,6 +607,11 @@ export default function IsoView() {
       const g0 = unproject(cam, sx, sy, 0), nx = Math.round(onBoard ? bx : g0[0] + d.part.off0[0]), ny = Math.round(onBoard ? by : g0[1] + d.part.off0[1]), inst = doc.parts.find(p => p.id === d.part!.id);
       if (inst && (nx !== inst.x || ny !== inst.y)) { useBench.getState().movePart(inst.id, nx, ny, !d.pick?.hasAttribute('data-moved')); d.pick?.setAttribute('data-moved', ''); }
     } else if (d.mode === 'wire') { const to = pinUnder(e); setHover(to); setRubber(scenePt(e)); }
+    else if (d.mode === 'end' && d.end) {
+      const to = pinUnder(e), w = doc.wires.find(x => x.id === d.end!.wire), other = w && w[d.end.side === 'a' ? 'b' : 'a'];
+      setHover(to);
+      if (to && to !== other && w && w[d.end.side] !== to) useBench.getState().rewire(d.end.wire, d.end.side, to, false);
+    }
   };
   const up = (e: { clientX: number; clientY: number; pointerId?: number }) => {
     if (e.pointerId != null) touches.current.delete(e.pointerId);
@@ -610,6 +620,13 @@ export default function IsoView() {
     drag.current = null; setMoving(false); setRubber(null);
     d?.pick?.removeAttribute('data-moved');
     if (!d) return;
+    if (d.mode === 'end' && d.end) {
+      if (!d.moved) return;
+      const to = pinUnder(e), w = doc.wires.find(x => x.id === d.end!.wire), other = w && w[d.end.side === 'a' ? 'b' : 'a'];
+      useBench.getState().rewire(d.end.wire, d.end.side, d.end.orig, false);
+      if (to && to !== other && to !== d.end.orig) useBench.getState().rewire(d.end.wire, d.end.side, to, true);
+      return;
+    }
     if (d.mode === 'wire' && d.from) {
       const to = pinUnder(e);
       if (d.moved && to && to !== d.from) useBench.getState().addWire(d.from, to);
@@ -649,6 +666,11 @@ export default function IsoView() {
           })}
           {labels && ordered.filter(p => p.inst.type !== 'breadboard').map(p => <Label key={`l${p.inst.id}`} cam={cam} p={p} />)}
           <PinLayer cam={cam} pins={scene.pins} pinPos={pinPos} holes={false} />
+          {sel?.kind === 'wire' && (() => {
+            const w = doc.wires.find(x => x.id === sel.id), a = w && pinAt.get(w.a), b = w && pinAt.get(w.b);
+            if (!w || !a || !b) return null;
+            return ([['a', a], ['b', b]] as const).map(([side, p]) => { const [x, y] = project(cam, ...pinPos(p)); return <circle key={side} data-end={`${w.id}|${side}`} cx={x} cy={y} r={6} fill="#fbf8f1" stroke="#3a6ed6" strokeWidth={2.4} style={{ cursor: 'grab' }} />; });
+          })()}
           {(hover || rubber) && <PinHover cam={cam} hover={hover} from={drag.current?.from ?? null} rubber={rubber} pins={scene.pins} pinAt={pinAt} pinPos={pinPos} />}
         </g>
       </svg>
@@ -658,7 +680,7 @@ export default function IsoView() {
         <button className="btn" onClick={fit}>Fit</button>
         <label className="iso-wob">Wobble <input type="range" min={0} max={4} step={0.2} value={wobble} onChange={e => setWobble(+e.target.value)} /></label>
       </div>
-      <div className="wb-3d-hint">drag the mat to orbit · pinch to zoom · two fingers to move · drag a part to move it · drag pin → pin for a wire · Del / R / ⌘Z</div>
+      <div className="wb-3d-hint">drag the mat to orbit · pinch to zoom · two fingers to move · drag a part to move it · drag pin → pin for a wire · select a wire, drag its end to move it · Del / R / ⌘Z</div>
     </div>
   );
 }
