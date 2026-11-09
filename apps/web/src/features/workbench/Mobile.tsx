@@ -25,6 +25,7 @@ export function useIsPhone() {
 type Tab = 'parts' | 'lesson' | 'part' | 'code' | 'log' | 'menu';
 
 export function MobileWorkbench({ side, peek, heading }: { side?: ReactNode; peek?: ReactNode; heading?: string }) {
+  const wireMode = useBench(s => s.wireMode), wireFrom = useBench(s => s.wireFrom);
   const view3d = useBench(s => s.view3d), running = useBench(s => s.running), sel = useBench(s => s.sel), doc = useBench(s => s.doc), logN = useBench(s => s.log.length);
   const [tab, setTab] = useState<Tab | null>(null);
   const b = useBench.getState();
@@ -32,7 +33,8 @@ export function MobileWorkbench({ side, peek, heading }: { side?: ReactNode; pee
   const hasCode = !!def?.program;
   useEffect(() => { const r = requestAnimationFrame(() => useBench.getState().fit()); return () => cancelAnimationFrame(r); }, [view3d]);
   useEffect(() => { if ((tab === 'part' && !sel) || (tab === 'code' && !hasCode)) setTab(null); }, [sel, hasCode, tab]);
-  const toggle = (t: Tab) => setTab(cur => cur === t ? null : t);
+  const toggle = (t: Tab) => { if (wireMode) b.setWireMode(false); setTab(cur => cur === t ? null : t); };
+  useEffect(() => () => useBench.getState().setWireMode(false), []);
   const tabs: [Tab, string, string][] = [['parts', '＋', 'Parts'], ...(side ? [['lesson', '✎', 'Lesson'] as [Tab, string, string]] : []), ['part', '⚙', 'Selected'], ...(hasCode ? [['code', '⌨', 'Code'] as [Tab, string, string]] : []), ['log', '≡', `Log${logN ? ` ·${logN}` : ''}`]];
   const title: Record<Tab, string> = { parts: 'Add a part', lesson: 'Lesson', part: def ? def.name : 'Selected', code: 'Code', log: 'Events', menu: 'Bench' };
 
@@ -47,8 +49,15 @@ export function MobileWorkbench({ side, peek, heading }: { side?: ReactNode; pee
       </header>
       <div className="mb-stage">
         {view3d ? <IsoView /> : <Canvas />}
-        {peek && !tab && <button className="mb-peek" onClick={() => setTab('lesson')}>{peek}</button>}
-        {sel && tab !== 'part' && (
+        {peek && !tab && !wireMode && <button className="mb-peek" onClick={() => setTab('lesson')}>{peek}</button>}
+        {wireMode ? (
+          <div className="mb-wirebar">
+            <span><b>Wire</b> · {wireFrom ? 'now tap the second pin' : 'tap the first pin'}{' '}<small>(press, slide, lift — the loupe shows the hole)</small></span>
+            {wireFrom && <button className="btn" onClick={() => useBench.setState({ wireFrom: null })}>Undo pick</button>}
+            <button className="btn on" onClick={() => b.setWireMode(false)}>Done</button>
+          </div>
+        ) : !tab && !sel && <button className="mb-fab" onClick={() => { setTab(null); b.setWireMode(true); }}>⌁ Wire</button>}
+        {sel && tab !== 'part' && !wireMode && (
           <div className="mb-actions">
             {sel.kind === 'part' && <button className="btn" onClick={() => b.rotate(sel.id)}>⟳ Rotate</button>}
             <button className="btn" onClick={() => b.remove(sel)}>🗑 Delete</button>
@@ -67,7 +76,7 @@ export function MobileWorkbench({ side, peek, heading }: { side?: ReactNode; pee
               {tab === 'part' && <Inspector />}
               {tab === 'code' && <CodePanel />}
               {tab === 'log' && <EventLog />}
-              {tab === 'menu' && <div className="mb-menu"><Toolbar /><div className="mb-acct"><AccountButton /></div><a className="btn" href={asset('/learn/')}>All lessons</a></div>}
+              {tab === 'menu' && <div className="mb-menu"><Toolbar /><div className="mb-acct"><AccountButton /></div><a className="btn" href={asset('/learn/')}>All lessons</a><a className="btn" href={asset('/settings/')}>⚙ Settings</a></div>}
             </div>
           </section>
         )}

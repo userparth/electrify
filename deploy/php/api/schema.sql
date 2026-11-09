@@ -45,3 +45,5 @@ CREATE TABLE IF NOT EXISTS class_lessons (
   PRIMARY KEY (class_id, lesson_id),
   FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS settings JSON NULL;

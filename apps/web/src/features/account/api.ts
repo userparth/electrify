@@ -1,9 +1,10 @@
 'use client';
 import { create } from 'zustand';
 import { asset } from '@/lib/paths';
+import '@/lib/settings';
 import { loadProgress, type LessonProgress } from '../learn/check';
 
-export interface User { id: number; email: string; name: string; picture: string; role: 'student' | 'teacher' }
+export interface User { id: number; email: string; name: string; picture: string; role: 'student' | 'teacher'; settings?: { palette?: string; font?: string } | null }
 export interface StudentRow { name: string; email: string; picture: string; progress: Record<string, { steps: number; done: boolean }> }
 export interface TeachingClass { name: string; code: string; created_at: string; students: StudentRow[]; assigned: string[] }
 export interface EnrolledClass { name: string; code: string; teacher: string; assigned: string[] }
@@ -37,12 +38,13 @@ export const useAccount = create<AccountState>((set, get) => ({
     try {
       const r = await call<{ user: User | null; configured: boolean }>('me.php');
       set({ user: r.user, available: r.configured, loaded: true });
+      dispatchEvent(new CustomEvent('eb-account', { detail: r.user }));
       if (r.user) await syncProgress();
     } catch { set({ user: null, available: false, loaded: true }); }
   },
   signIn() { location.href = `${api('auth.php')}?action=start&return=${encodeURIComponent(location.pathname + location.search)}`; },
-  async signOut() { await call('auth.php?action=logout', {}); set({ user: null }); },
-  async deleteAccount() { await call('account.php', { action: 'delete' }); set({ user: null }); },
+  async signOut() { await call('auth.php?action=logout', {}); set({ user: null }); dispatchEvent(new CustomEvent('eb-account', { detail: null })); },
+  async deleteAccount() { await call('account.php', { action: 'delete' }); set({ user: null }); dispatchEvent(new CustomEvent('eb-account', { detail: null })); },
 }));
 
 /** Pushes local progress up, pulls the merged result down. */

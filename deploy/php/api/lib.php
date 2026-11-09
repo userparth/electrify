@@ -45,9 +45,12 @@ function eb_user(): ?array {
   eb_session();
   $id = $_SESSION['uid'] ?? null;
   if (!$id) return null;
-  $q = eb_db()->prepare('SELECT id, email, name, picture, role FROM users WHERE id = ?');
+  $q = eb_db()->prepare('SELECT id, email, name, picture, role, settings FROM users WHERE id = ?');
   $q->execute([$id]);
-  return $q->fetch() ?: null;
+  $u = $q->fetch();
+  if (!$u) return null;
+  $u['settings'] = $u['settings'] ? json_decode($u['settings'], true) : null;
+  return $u;
 }
 
 function eb_require_user(): array {

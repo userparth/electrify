@@ -26,11 +26,38 @@ function wirePath(ax: number, ay: number, bx: number, by: number) {
   return `M${x1},${y1} Q${mx - dy * k},${my + dx * k} ${x2},${y2}`;
 }
 
+/** Magnifier above the finger while picking a pin in wire mode, so the finger never hides the hole. */
+function Loupe({ pick, zoom, from }: { pick: { wx: number; wy: number; cx: number; cy: number; cand: PlacedPin | null }; zoom: number; from: PlacedPin | null }) {
+  const R = 66, s = Math.max(2.6, zoom * 2.2), c = pick.cand, left = pick.cx - R, top = Math.max(4, pick.cy - 2 * R - 46);
+  return (
+    <div className="wb-loupe" style={{ left, top }}>
+      <svg width={2 * R} height={2 * R}>
+        <defs><clipPath id="wb-loupe-clip"><circle cx={R} cy={R} r={R - 2} /></clipPath></defs>
+        <g clipPath="url(#wb-loupe-clip)">
+          <rect width={2 * R} height={2 * R} fill="var(--canvas)" />
+          <g transform={`translate(${R},${R}) scale(${s}) translate(${-pick.wx * GRID},${-pick.wy * GRID})`}>
+            <use href="#wb-world" />
+            {c && <circle cx={c.x * GRID} cy={c.y * GRID} r={5.5} fill="#3a6ed644" stroke="#3a6ed6" strokeWidth={1.6} />}
+          </g>
+          <path d={`M${R - 8},${R} H${R + 8} M${R},${R - 8} V${R + 8}`} stroke="#1d1d1b" strokeWidth={1} opacity={0.5} />
+        </g>
+        <circle cx={R} cy={R} r={R - 2} fill="none" stroke="#1d1d1b" strokeWidth={2.4} />
+      </svg>
+      <div className="wb-loupe-label">{c ? `${c.def.name.replace(/\s*\(.*\)$/, '')} · ${c.pin.label}` : 'move onto a pin'}{from && c && from.key !== c.key ? ' ✓' : ''}</div>
+    </div>
+  );
+}
+
 export function Canvas() {
   const doc = useBench(s => s.doc), sel = useBench(s => s.sel), view = useBench(s => s.view), live = useBench(s => s.live), volts = useBench(s => s.volts);
   const svg = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<null | { kind: 'part'; id: string; dx: number; dy: number; moved: boolean } | { kind: 'pan'; sx: number; sy: number; vx: number; vy: number } | { kind: 'wire'; from: PlacedPin; x: number; y: number } | { kind: 'end'; wire: string; end: 'a' | 'b'; orig: string; x: number; y: number }>(null);
   const [hover, setHover] = useState<PlacedPin | null>(null);
+  const wireMode = useBench(s => s.wireMode), wireFrom = useBench(s => s.wireFrom);
+  const [pick, setPickState] = useState<{ wx: number; wy: number; cx: number; cy: number; cand: PlacedPin | null } | null>(null);
+  // Lifting a finger jitters it, so the pin picked is the one the loupe showed last, not one recomputed at lift-off.
+  const pickRef = useRef<typeof pick>(null);
+  const setPick = (p: typeof pick) => { pickRef.current = p; setPickState(p); };
 
   const pins = useMemo(() => doc.parts.flatMap(placedPins), [doc.parts]);
   const pinAt = useMemo(() => new Map(pins.map(p => [p.key, p])), [pins]);
@@ -48,6 +75,12 @@ export function Canvas() {
     return best;
   };
   const act = (id: string, patch: Props) => useBench.getState().setProps(id, patch, true);
+  const pickAt = (e: { clientX: number; clientY: number }) => {
+    const r = svg.current!.getBoundingClientRect(), w = world(e);
+    let cand: PlacedPin | null = null, bd = 26 / GRID / view.zoom;
+    for (const p of pins) { const d = Math.hypot(p.x - w.x, p.y - w.y); if (d < bd) { bd = d; cand = p; } }
+    return { wx: w.x, wy: w.y, cx: e.clientX - r.left, cy: e.clientY - r.top, cand };
+  };
 
   const fingers = useRef(new Map<number, [number, number]>()), pinch = useRef<{ d: number; mx: number; my: number } | null>(null);
   const pinchNow = () => { const [a, b] = [...fingers.current.values()]; return { d: Math.hypot(a![0] - b![0], a![1] - b![1]) || 1, mx: (a![0] + b![0]) / 2, my: (a![1] + b![1]) / 2 }; };
@@ -58,6 +91,7 @@ export function Canvas() {
       fingers.current.set(e.pointerId, [e.clientX, e.clientY]);
       if (fingers.current.size === 2) { setDrag(null); setHover(null); pinch.current = pinchNow(); svg.current!.setPointerCapture(e.pointerId); return; }
     }
+    if (wireMode && !(e.target as Element).closest('[data-interactive]')) { setPick(pickAt(e)); svg.current!.setPointerCapture(e.pointerId); return; }
     if (e.button === 1 || e.altKey) { setDrag({ kind: 'pan', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y }); svg.current!.setPointerCapture(e.pointerId); return; }
     const t = e.target as Element, w = world(e);
     const pinEl = t.closest('[data-pin]'), partEl = t.closest('[data-part]'), wireEl = t.closest('[data-wire]'), endEl = t.closest('[data-end]');
@@ -93,6 +127,7 @@ export function Canvas() {
       pinch.current = p1;
       return;
     }
+    if (pickRef.current) { setPick(pickAt(e)); return; }
     const w = world(e);
     if (!drag) { setHover(nearestPin(w.x, w.y)); return; }
     if (drag.kind === 'pan') useBench.getState().setView({ x: drag.vx + e.clientX - drag.sx, y: drag.vy + e.clientY - drag.sy });
@@ -110,7 +145,8 @@ export function Canvas() {
 
   const onPointerUp = (e: React.PointerEvent) => {
     fingers.current.delete(e.pointerId);
-    if (pinch.current) { if (fingers.current.size < 2) pinch.current = null; setDrag(null); return; }
+    if (pinch.current) { if (fingers.current.size < 2) pinch.current = null; setDrag(null); setPick(null); return; }
+    if (pickRef.current) { const c = pickRef.current.cand; setPick(null); if (c) useBench.getState().pickWirePin(c.key); return; }
     if (drag?.kind === 'wire') {
       const w = world(e), to = nearestPin(w.x, w.y, drag.from.key);
       if (to) useBench.getState().addWire(drag.from.key, to.key);
@@ -146,10 +182,11 @@ export function Canvas() {
     <div className="wb-canvas">
       <svg ref={svg} width="100%" height="100%" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerLeave={() => !drag && setHover(null)} onWheel={onWheel} onDragOver={e => e.preventDefault()} onDrop={onDrop} style={{ touchAction: 'none', cursor: drag?.kind === 'pan' ? 'grabbing' : 'default' }}>
         <defs>
-          <pattern id="dots" width={GRID * view.zoom} height={GRID * view.zoom} patternUnits="userSpaceOnUse" x={view.x} y={view.y}><circle cx={1} cy={1} r={0.9} fill="#d8d0bd" /></pattern>
+          <pattern id="dots" width={GRID * view.zoom} height={GRID * view.zoom} patternUnits="userSpaceOnUse" x={view.x} y={view.y}><circle cx={1} cy={1} r={0.9} fill="var(--dots)" /></pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#dots)" />
         <g transform={`translate(${view.x},${view.y}) scale(${view.zoom})`}>
+          <g id="wb-world">
           {order.map(inst => <PartView key={inst.id} inst={inst} live={live[inst.id]} selected={sel?.kind === 'part' && sel.id === inst.id} act={act} />)}
           {doc.wires.map(w => {
             const a = pinAt.get(w.a), b = pinAt.get(w.b);
@@ -181,8 +218,16 @@ export function Canvas() {
               <text x={8} y={30} fontSize={10} fill="#9be3b4" fontFamily="ui-monospace,Menlo,monospace">{fmtV(hover.key)}{hot.length > 1 ? ` · joined to ${hot.length - 1}` : ''}</text>
             </g>
           )}
+          </g>
+          {wireFrom && pinAt.get(wireFrom) && (() => { const f = pinAt.get(wireFrom)!, c = pick?.cand; return (
+            <g pointerEvents="none">
+              {c && c.key !== wireFrom && <path d={wirePath(f.x, f.y, c.x, c.y)} fill="none" stroke="#3a6ed6" strokeWidth={3} strokeDasharray="6 5" strokeLinecap="round" />}
+              <circle cx={f.x * GRID} cy={f.y * GRID} r={7} fill="#3a6ed633" stroke="#3a6ed6" strokeWidth={2.5} className="wb-pulse" />
+            </g>
+          ); })()}
         </g>
       </svg>
+      {pick && <Loupe pick={pick} zoom={view.zoom} from={wireFrom ? pinAt.get(wireFrom) ?? null : null} />}
     </div>
   );
 }

@@ -7,8 +7,8 @@ export function AccountButton() {
   const { user, available, loaded, refresh, signIn, signOut } = useAccount();
   const [open, setOpen] = useState(false);
   useEffect(() => { if (!loaded) refresh(); }, [loaded, refresh]);
-  if (!loaded || !available) return null;
-  if (!user) return <button className="btn" onClick={signIn}>Sign in with Google</button>;
+  if (!loaded || !available) return <a className="btn acct-gear" href={asset('/settings/')} title="Settings" aria-label="Settings">⚙</a>;
+  if (!user) return <span className="acct-pair"><a className="btn acct-gear" href={asset('/settings/')} title="Settings" aria-label="Settings">⚙</a><button className="btn" onClick={signIn}>Sign in with Google</button></span>;
   return (
     <div className="acct">
       <button className="acct-me" onClick={() => setOpen(o => !o)} title={user.email}>
@@ -20,6 +20,7 @@ export function AccountButton() {
           <a href={asset('/account/')}>My progress</a>
           <a href={asset('/teacher/')}>Teacher: my classes</a>
           <a href={asset('/join/')}>Join a class</a>
+          <a href={asset('/settings/')}>Settings</a>
           <button onClick={() => { signOut(); setOpen(false); }}>Sign out</button>
         </div>
       )}

@@ -399,7 +399,7 @@ function Label({ cam, p }: { cam: Cam; p: Placed }) {
     <g pointerEvents="none" fontFamily="ui-monospace,Menlo,monospace">
       <line x1={ax} y1={ay} x2={lx} y2={ly + 9} stroke={INK} strokeWidth={1} />
       <circle cx={ax} cy={ay} r={2.4} fill={INK} />
-      <rect x={lx - w / 2} y={ly - 9} width={w} height={18} rx={9} fill="#fbf8f1" stroke={INK} strokeWidth={1.3} />
+      <rect x={lx - w / 2} y={ly - 9} width={w} height={18} rx={9} fill="var(--paper)" stroke={INK} strokeWidth={1.3} />
       <text x={lx} y={ly + 3.5} textAnchor="middle" fontSize={9.5} fontWeight={700} fill={INK}>{text}</text>
     </g>
   );
@@ -407,15 +407,16 @@ function Label({ cam, p }: { cam: Cam; p: Placed }) {
 
 function Mat({ cam, x0, y0, x1, y1 }: { cam: Cam; x0: number; y0: number; x1: number; y1: number }) {
   const t = 0.9, c: [number, number][] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], lines: ReactNode[] = [];
-  for (let x = Math.ceil(x0 / 5) * 5; x <= x1; x += 5) lines.push(<line key={`x${x}`} x1={project(cam, x, y0, 0)[0]} y1={project(cam, x, y0, 0)[1]} x2={project(cam, x, y1, 0)[0]} y2={project(cam, x, y1, 0)[1]} stroke="#2f6f5e" strokeOpacity={x % 25 === 0 ? 0.35 : 0.16} />);
-  for (let y = Math.ceil(y0 / 5) * 5; y <= y1; y += 5) lines.push(<line key={`y${y}`} x1={project(cam, x0, y, 0)[0]} y1={project(cam, x0, y, 0)[1]} x2={project(cam, x1, y, 0)[0]} y2={project(cam, x1, y, 0)[1]} stroke="#2f6f5e" strokeOpacity={y % 25 === 0 ? 0.35 : 0.16} />);
+  for (let x = Math.ceil(x0 / 5) * 5; x <= x1; x += 5) lines.push(<line key={`x${x}`} x1={project(cam, x, y0, 0)[0]} y1={project(cam, x, y0, 0)[1]} x2={project(cam, x, y1, 0)[0]} y2={project(cam, x, y1, 0)[1]} stroke="var(--mat-line)" strokeOpacity={x % 25 === 0 ? 0.35 : 0.16} />);
+  for (let y = Math.ceil(y0 / 5) * 5; y <= y1; y += 5) lines.push(<line key={`y${y}`} x1={project(cam, x0, y, 0)[0]} y1={project(cam, x0, y, 0)[1]} x2={project(cam, x1, y, 0)[0]} y2={project(cam, x1, y, 0)[1]} stroke="var(--mat-line)" strokeOpacity={y % 25 === 0 ? 0.35 : 0.16} />);
   const top = c.map(([x, y]) => project(cam, x, y, 0)), faces: ReactNode[] = [];
   for (let i = 0; i < 4; i++) {
     const a = c[i]!, b = c[(i + 1) % 4]!, { visible, lit } = faceLook(cam, b[1] - a[1], -(b[0] - a[0]));
     if (!visible) continue;
-    faces.push(<polygon key={i} points={pts([project(cam, a[0], a[1], -t), project(cam, b[0], b[1], -t), project(cam, b[0], b[1], 0), project(cam, a[0], a[1], 0)])} fill={shade('#5aa892', lit)} stroke={INK} strokeWidth={1.4} />);
+    const q = pts([project(cam, a[0], a[1], -t), project(cam, b[0], b[1], -t), project(cam, b[0], b[1], 0), project(cam, a[0], a[1], 0)]);
+    faces.push(<g key={i}><polygon points={q} fill="var(--mat-side)" /><polygon points={q} fill="#000" fillOpacity={Math.max(0, -lit) * 0.7} stroke={INK} strokeWidth={1.4} /></g>);
   }
-  return <g>{faces}<polygon points={pts(top)} fill="#8fc4b0" stroke={INK} strokeWidth={1.4} />{lines}</g>;
+  return <g>{faces}<polygon points={pts(top)} fill="var(--mat)" stroke={INK} strokeWidth={1.4} />{lines}</g>;
 }
 
 /** Invisible hit targets on every pin and breadboard hole; part pins are drawn last so they win over holes. */
@@ -438,7 +439,7 @@ function PinHover({ cam, hover, from, rubber, pins, pinAt, pinPos }: { cam: Cam;
       {hp && <circle cx={hp[0]} cy={hp[1]} r={6.5} fill="none" stroke="#3a6ed6" strokeWidth={2.2} />}
       {hp && h && (
         <g transform={`translate(${hp[0] + 10},${hp[1] - 28})`} fontFamily="ui-monospace,Menlo,monospace">
-          <rect width={Math.max(h.pin.label.length, vText.length) * 5.6 + 16} height={30} rx={8} fill="#fbf8f1" stroke={INK} strokeWidth={1.2} />
+          <rect width={Math.max(h.pin.label.length, vText.length) * 5.6 + 16} height={30} rx={8} fill="var(--paper)" stroke={INK} strokeWidth={1.2} />
           <text x={8} y={12} fontSize={8.5} fontWeight={700} fill={INK}>{h.pin.label}</text>
           <text x={8} y={24} fontSize={8.5} fill="#4b4840">{vText}</text>
         </g>
@@ -447,10 +448,10 @@ function PinHover({ cam, hover, from, rubber, pins, pinAt, pinPos }: { cam: Cam;
   );
 }
 
-type Drag = { x: number; y: number; mode: 'orbit' | 'pan' | 'part' | 'wire' | 'end'; th: number; ph: number; vx: number; vy: number; moved: boolean; pick: Element | null; part?: { id: string; board: boolean; off0: [number, number]; offB: [number, number] }; from?: string; end?: { wire: string; side: 'a' | 'b'; orig: string } };
+type Drag = { x: number; y: number; mode: 'orbit' | 'pan' | 'part' | 'wire' | 'end' | 'tap'; th: number; ph: number; vx: number; vy: number; moved: boolean; pick: Element | null; part?: { id: string; board: boolean; off0: [number, number]; offB: [number, number] }; from?: string; end?: { wire: string; side: 'a' | 'b'; orig: string } };
 
 export default function IsoView() {
-  const doc = useBench(s => s.doc), live = useBench(s => s.live), sel = useBench(s => s.sel);
+  const doc = useBench(s => s.doc), live = useBench(s => s.live), sel = useBench(s => s.sel), wireFrom = useBench(s => s.wireFrom);
   const [angle, setAngle] = useState(ISO), [labels, setLabels] = useState(true), [wobble, setWobble] = useState(1.2), [moving, setMoving] = useState(false);
   const [view, setView] = useState({ x: 0, y: 0, zoom: 1 });
   const [center, setCenter] = useState<[number, number] | null>(null);
@@ -575,7 +576,8 @@ export default function IsoView() {
     if (!pan && endEl) {
       const [wire, side] = endEl.getAttribute('data-end')!.split('|') as [string, 'a' | 'b'], w = doc.wires.find(x => x.id === wire);
       if (w) { d.mode = 'end'; d.end = { wire, side, orig: w[side] }; }
-    } else if (!pan && pin) { d.mode = 'wire'; d.from = pin; }
+    } else if (!pan && pin && useBench.getState().wireMode) { d.mode = 'tap'; d.from = pin; }
+    else if (!pan && pin) { d.mode = 'wire'; d.from = pin; }
     else if (!pan && partEl) {
       const id = partEl.getAttribute('data-part')!, p = scene.placed.find(q => q.inst.id === id);
       if (p && p.inst.type !== 'breadboard') {
@@ -599,7 +601,7 @@ export default function IsoView() {
     if (d && e.buttons === 0) { up(e); return; }
     if (!d) { setHover(pinUnder(e)); return; }
     const dx = e.clientX - d.x, dy = e.clientY - d.y;
-    if (!d.moved && Math.abs(dx) + Math.abs(dy) > 4) { d.moved = true; setMoving(d.mode === 'orbit' || d.mode === 'pan'); }
+    if (!d.moved && Math.abs(dx) + Math.abs(dy) > (d.mode === 'tap' ? 10 : 4)) { if (d.mode === 'tap') d.mode = 'orbit'; d.moved = true; setMoving(d.mode === 'orbit' || d.mode === 'pan'); }
     if (!d.moved) return;
     if (d.mode === 'pan') setView(v => ({ ...v, x: d.vx + dx, y: d.vy + dy }));
     else if (d.mode === 'orbit') setAngle({ th: d.th - dx * 0.008, ph: Math.min(1.45, Math.max(0.12, d.ph + dy * 0.006)) });
@@ -622,6 +624,7 @@ export default function IsoView() {
     drag.current = null; setMoving(false); setRubber(null);
     d?.pick?.removeAttribute('data-moved');
     if (!d) return;
+    if (d.mode === 'tap') { if (!d.moved && d.from) useBench.getState().pickWirePin(d.from); return; }
     if (d.mode === 'end' && d.end) {
       if (!d.moved) return;
       const to = pinUnder(e), w = doc.wires.find(x => x.id === d.end!.wire), other = w && w[d.end.side === 'a' ? 'b' : 'a'];
@@ -668,6 +671,7 @@ export default function IsoView() {
           })}
           {labels && ordered.filter(p => p.inst.type !== 'breadboard').map(p => <Label key={`l${p.inst.id}`} cam={cam} p={p} />)}
           <PinLayer cam={cam} pins={scene.pins} pinPos={pinPos} holes={false} />
+          {wireFrom && pinAt.get(wireFrom) && (() => { const [x, y] = project(cam, ...pinPos(pinAt.get(wireFrom)!)); return <circle cx={x} cy={y} r={8} fill="#3a6ed633" stroke="#3a6ed6" strokeWidth={2.5} className="wb-pulse" pointerEvents="none" />; })()}
           {sel?.kind === 'wire' && (() => {
             const w = doc.wires.find(x => x.id === sel.id), a = w && pinAt.get(w.a), b = w && pinAt.get(w.b);
             if (!w || !a || !b) return null;

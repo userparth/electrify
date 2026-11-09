@@ -33,6 +33,11 @@ interface State {
   wireColor: string;
   view3d: boolean;
   setView3d(v: boolean): void;
+  /** Phone wiring: taps pick pins instead of dragging; wireFrom is the first pin picked. */
+  wireMode: boolean;
+  wireFrom: string | null;
+  setWireMode(on: boolean): void;
+  pickWirePin(key: string): void;
   serial: Record<string, string>;
   status: Record<string, { running: boolean; message?: string }>;
   clearSerial(id: string): void;
@@ -65,6 +70,14 @@ export const useBench = create<State>((set, get) => ({
   view: { x: 40, y: 40, zoom: 1 },
   running: true, dt: 1e-4, live: {}, volts: {}, simTime: 0, speed: 1, log: [], wireColor: '#d6452f', serial: {}, status: {}, view3d: false,
   setView3d(v) { set({ view3d: v }); },
+  wireMode: false, wireFrom: null,
+  setWireMode(on) { set({ wireMode: on, wireFrom: null, sel: null }); },
+  pickWirePin(key) {
+    const from = get().wireFrom;
+    if (!from) { set({ wireFrom: key }); return; }
+    if (from !== key) get().addWire(from, key);
+    set({ wireFrom: null });
+  },
   clearSerial(id) { set(s => ({ serial: { ...s.serial, [id]: '' } })); },
 
   commit(next) { set(s => ({ doc: next, past: [...s.past.slice(-80), s.doc], future: [] })); runner.rebuild(); },
