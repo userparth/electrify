@@ -1,9 +1,8 @@
 'use client';
-import type { SimEvent } from '@eb/engine';
-import { getPart, type Live, type Props } from '@eb/parts';
+import { getPart, GRID, type Live, type Props } from '@eb/parts';
 import { create } from 'zustand';
-import { GRID, prunePicos } from '@eb/parts';
-import { buildCircuit, placedPins, type Built, type Doc, type Inst, type Wire, uid } from './model';
+import { placedPins, type Doc, type Inst, type Wire, uid } from './model';
+import type { FromSim, LogEntry, ToSim } from './protocol';
 
 /** Zoom and pan so every part fits the visible canvas. */
 function fitView(doc: Doc) {
@@ -30,7 +29,7 @@ interface State {
   volts: Record<string, number>;
   simTime: number;
   speed: number;
-  log: { t: number; e: SimEvent }[];
+  log: LogEntry[];
   wireColor: string;
   view3d: boolean;
   setView3d(v: boolean): void;
@@ -87,10 +86,8 @@ export const useBench = create<State>((set, get) => ({
     if (!inst) return;
     const props = { ...inst.props, ...patch } as Props;
     const next = { ...d, parts: d.parts.map(p => p.id === id ? { ...p, props } : p) };
-    const rt = runner.built?.runtimes.get(id), def = getPart(inst.type);
-    const applied = rt?.update?.({ ...def?.defaults, ...props }) ?? false;
     if (transient) set({ doc: next }); else set(s => ({ doc: next, past: [...s.past.slice(-80), s.doc], future: [] }));
-    if (!applied) runner.rebuild();
+    runner.setProps(id, props);
   },
   addWire(a, b) {
     const d = get().doc;
@@ -126,100 +123,86 @@ export const useBench = create<State>((set, get) => ({
   setWireColor(c) { set({ wireColor: c }); },
 }));
 
-/** Owns the engine instance and steps it inside a per-frame time budget. */
+/** Drives the simulation worker: sends it the circuit and mirrors what it reports into the store. */
 class Runner {
-  built: Built | null = null;
-  private dirty = true;
+  /** Net id per pin key, from the last circuit the worker built. */
+  net = new Map<string, string>();
+  private worker: Worker | null = null;
+  private dirty = false;
   private raf = 0;
-  private lastWall = 0;
-  private lastPublish = 0;
-  private stepsThisSecond = 0;
-  private secondStart = 0;
+  private sentVer = 0;
+  private builtVer = -1;
+  private frameVer = -1;
+  private unsub: (() => void) | null = null;
+
+  /** True once the worker has simulated the doc currently in the store. */
+  synced() { return !this.dirty && this.builtVer === this.sentVer && this.frameVer === this.sentVer; }
 
   rebuild() { this.dirty = true; }
 
-  private unsub: (() => void) | null = null;
+  private send(m: ToSim) { this.worker?.postMessage(m); }
+
+  private ensureWorker() {
+    if (this.worker) return;
+    const w = new Worker(new URL('./sim.worker.ts', import.meta.url), { type: 'module' });
+    w.onmessage = (e: MessageEvent<FromSim>) => this.receive(e.data);
+    w.onerror = e => useBench.setState(s => ({ log: [...s.log, { t: s.simTime, e: { kind: 'worker', severity: 'error', message: `Simulator crashed: ${e.message}` } }] }));
+    this.worker = w;
+  }
 
   /** `key` is where the circuit autosaves; `initial` seeds it the first time (lessons use their own key). */
   start(opts: { key?: string; initial?: () => Doc; dt?: number } = {}) {
     if (this.raf) this.stop();
+    this.ensureWorker();
     const key = opts.key ?? KEY;
-    useBench.setState({ doc: saved(key) ?? opts.initial?.() ?? empty, past: [], future: [], sel: null, log: [], serial: {}, status: {}, ...(opts.dt ? { dt: opts.dt } : {}) });
+    useBench.setState({ doc: saved(key) ?? opts.initial?.() ?? empty, past: [], future: [], sel: null, log: [], serial: {}, status: {}, live: {}, volts: {}, ...(opts.dt ? { dt: opts.dt } : {}) });
+    this.net = new Map();
     this.dirty = true;
+    this.send({ type: 'running', running: useBench.getState().running });
     requestAnimationFrame(() => useBench.getState().fit());
-    this.unsub = useBench.subscribe((s, prev) => { if (s.doc !== prev.doc) localStorage.setItem(key, JSON.stringify(s.doc)); });
-    const loop = (now: number) => { this.raf = requestAnimationFrame(loop); this.frame(now); };
+    this.unsub = useBench.subscribe((s, prev) => {
+      if (s.doc !== prev.doc) localStorage.setItem(key, JSON.stringify(s.doc));
+      if (s.running !== prev.running) this.send({ type: 'running', running: s.running });
+    });
+    const loop = () => { this.raf = requestAnimationFrame(loop); this.flush(); };
+    this.flush();
     this.raf = requestAnimationFrame(loop);
   }
 
-  stop() { cancelAnimationFrame(this.raf); this.raf = 0; this.unsub?.(); this.unsub = null; }
+  stop() { cancelAnimationFrame(this.raf); this.raf = 0; this.unsub?.(); this.unsub = null; this.dirty = false; this.send({ type: 'stop' }); }
 
-  private frame(now: number) {
+  private flush() {
+    if (!this.dirty) return;
+    this.dirty = false;
     const st = useBench.getState();
-    if (this.dirty) {
-      this.dirty = false;
-      const old = this.built;
-      this.built = buildCircuit(st.doc, st.dt);
-      if (old) for (const [id, rt] of old.runtimes) if (this.built.runtimes.get(id) !== rt) rt.dispose?.();
-      const py = (globalThis as { BenchHost?: { python?: { prune(keep: string[]): void } } }).BenchHost?.python;
-      py?.prune(st.doc.parts.filter(p => p.type === 'rpi4').map(p => String(p.props.sid ?? p.id)));
-      prunePicos(st.doc.parts.filter(p => p.type === 'pico').map(p => String(p.props.sid ?? p.id)));
-      this.built.sim.onEvent = e => useBench.setState(s => ({ log: [...s.log.slice(-60), { t: this.built!.sim.t, e }] }));
-      this.built.sim.op();
-      this.bindSamplers(st);
-      for (const msg of this.built.errors) useBench.setState(s => ({ log: [...s.log, { t: 0, e: { kind: 'build', severity: 'error', message: msg } }] }));
-      this.publish(st);
-    }
-    const b = this.built!;
-    const wall = Math.min(0.05, (now - (this.lastWall || now)) / 1000);
-    this.lastWall = now;
-    if (st.running && wall > 0) {
-      const want = Math.max(1, Math.round(wall / b.sim.dt)), t0 = performance.now();
-      let n = 0;
-      while (n < want && performance.now() - t0 < 9) {
-        b.sim.step(); n++;
-        for (const [fn, v] of this.samplers) fn(b.sim, v);
-      }
-      this.stepsThisSecond += n;
-    }
-    if (now - this.secondStart > 1000) {
-      useBench.setState({ speed: this.stepsThisSecond * b.sim.dt / ((now - this.secondStart) / 1000 || 1) });
-      this.stepsThisSecond = 0; this.secondStart = now;
-    }
-    if (now - this.lastPublish > 60) { this.lastPublish = now; this.publish(st); }
+    this.send({ type: 'doc', ver: ++this.sentVer, doc: st.doc, dt: st.dt });
   }
 
-  private samplers: [NonNullable<import('@eb/parts').Runtime['sample']>, (pin: string) => number][] = [];
-
-  private bindSamplers(st: State) {
-    const b = this.built!;
-    this.samplers = [];
-    for (const inst of st.doc.parts) {
-      const rt = b.runtimes.get(inst.id);
-      if (!rt?.sample) continue;
-      const cache = new Map<string, number>();
-      const v = (pin: string) => { let n = cache.get(pin); if (n == null) { n = b.node.get(`${inst.id}:${pin}`) ?? 0; cache.set(pin, n); } return b.sim.v(n); };
-      this.samplers.push([rt.sample.bind(rt), v]);
-    }
+  /** Applies a prop change in place when the part supports it, else the worker rebuilds. */
+  setProps(id: string, props: Props) {
+    if (this.dirty) return;
+    this.send({ type: 'props', ver: ++this.sentVer, doc: useBench.getState().doc, id, props });
   }
 
-  private publish(st: State) {
-    const b = this.built;
-    if (!b) return;
-    const v = (k: string) => b.sim.v(b.node.get(k) ?? 0), live: Record<string, Live> = {}, volts: Record<string, number> = {};
-    for (const inst of st.doc.parts) {
-      const rt = b.runtimes.get(inst.id);
-      if (rt?.read) live[inst.id] = rt.read(b.sim, pin => v(`${inst.id}:${pin}`));
+  serialWrite(id: string, text: string) { this.send({ type: 'serial', id, text }); }
+
+  private receive(m: FromSim) {
+    if (m.type === 'built') {
+      this.builtVer = m.ver; this.net = m.net;
+      if (m.errors.length) useBench.setState(s => ({ log: [...s.log, ...m.errors.map(message => ({ t: 0, e: { kind: 'build', severity: 'error' as const, message } }))] }));
+      return;
     }
-    for (const [k, n] of b.node) if (b.connected.has(k)) volts[k] = b.sim.v(n);
-    let serial = st.serial, status = st.status;
-    for (const [id, rt] of b.runtimes) {
-      const text = rt.serial?.read();
-      if (text) serial = { ...serial, [id]: ((serial[id] ?? '') + text).slice(-20000) };
-      const s = rt.status?.();
-      if (s && (s.running !== status[id]?.running || s.message !== status[id]?.message)) status = { ...status, [id]: s };
-    }
-    useBench.setState({ live, volts, simTime: b.sim.t, serial, status });
+    this.frameVer = m.ver;
+    useBench.setState(s => {
+      let serial = s.serial;
+      for (const [id, text] of Object.entries(m.serial)) serial = { ...serial, [id]: ((serial[id] ?? '') + text).slice(-20000) };
+      return {
+        live: m.live, volts: m.volts, simTime: m.simTime, serial,
+        ...(Object.keys(m.status).length ? { status: { ...s.status, ...m.status } } : {}),
+        ...(m.log.length ? { log: [...s.log, ...m.log].slice(-60) } : {}),
+        ...(m.speed != null ? { speed: m.speed } : {}),
+      };
+    });
   }
 }
 

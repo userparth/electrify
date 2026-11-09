@@ -1,8 +1,6 @@
 'use client';
 import dynamic from 'next/dynamic';
 import { useEffect, type ReactNode } from 'react';
-import { registerFirmwareHost } from '../firmware/host';
-import { registerPythonHost } from '../python/host';
 import { Canvas } from './Canvas';
 import { AccountButton } from '../account/AccountButton';
 import { CodePanel } from './CodePanel';
@@ -16,8 +14,6 @@ const Scene3D = dynamic(() => import('./three/Scene3D'), { ssr: false, loading: 
 export function Workbench({ storageKey, initial, dt, side, title }: { storageKey?: string; initial?: () => Doc; dt?: number; side?: ReactNode; title?: ReactNode } = {}) {
   const view3d = useBench(s => s.view3d);
   useEffect(() => {
-    registerPythonHost();
-    registerFirmwareHost();
     runner.start({ key: storageKey, initial, dt });
     const key = (e: KeyboardEvent) => {
       if (/INPUT|SELECT|TEXTAREA/.test((e.target as HTMLElement).tagName)) return;

@@ -3,15 +3,15 @@ import { runner, useBench } from '../workbench/store';
 import type { Check } from './types';
 
 export function makeCheck(): Check {
-  const st = useBench.getState(), b = runner.built, doc = st.doc, live = st.live;
+  const st = useBench.getState(), net = runner.net, doc = st.doc, live = st.live;
   const parts = (type: string) => doc.parts.filter(p => p.type === type);
   const nth = (type: string, n = 0) => parts(type)[n];
   return {
     doc, live, parts,
     read: (type, key, n = 0) => { const p = nth(type, n); const v = p ? live[p.id]?.[key] : undefined; return Array.isArray(v) ? undefined : v; },
-    joined: (a, c) => !!b && !!b.net.get(a) && b.net.get(a) === b.net.get(c),
+    joined: (a, c) => !!net.get(a) && net.get(a) === net.get(c),
     pin: (type, pin, n = 0) => `${nth(type, n)?.id ?? '?'}:${pin}`,
-    v: key => { const k = b?.node.get(key); return k == null ? undefined : b!.sim.v(k); },
+    v: key => st.volts[key],
     glow: () => Math.max(0, ...parts('led').map(p => Number(live[p.id]?.glow ?? 0))),
     dmm: () => {
       const p = nth('dmm'), l = p && live[p.id];

@@ -81,7 +81,7 @@ electronics-bench/
 | 5 | Arduino + Raspberry Pi ✅ (first cut) | Arduino Uno (avr8js, `/api/compile` via arduino-cli, code panel, Serial monitor) · Pi 4 GPIO (Pyodide worker, gpiozero + RPi.GPIO shims) · Pi Pico (rp2040js + MicroPython v1.29, bootrom B1; ~40–65% real time) · I2C/SPI/UART to parts later | large |
 | 6 | Platform | Auth, schools, licences, classes, progress, server-only content | large |
 | 7 | Content | Five modules above, solar ported | large |
-| 8 | Hardening + deploy | Obfuscation, Rust/WASM engine, watermark, rate limits, hosting | medium |
+| 8 | Speed + deploy (in progress) | ✅ Simulation in a Web Worker (UI never blocks) · ✅ Pico USB IRQ storm fixed (sleeping MicroPython ~20× faster, Pico at real time) · ✅ op-amp convergence fix · ✅ hosting + compile rate limit. Rust/WASM only if a circuit needs it (solver is 6–150× real time today) | medium |
 
 ## Needs your input later
 

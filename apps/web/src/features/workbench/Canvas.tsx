@@ -117,7 +117,7 @@ export function Canvas() {
     useBench.getState().addPart(type, Math.round(w.x), Math.round(w.y));
   };
 
-  const net = runner.built?.net, hoverNet = hover ? net?.get(hover.key) : undefined;
+  const net = runner.net, hoverNet = hover ? net?.get(hover.key) : undefined;
   const hot = hoverNet ? pins.filter(p => net?.get(p.key) === hoverNet) : [];
   const fmtV = (k: string) => volts[k] != null ? `${volts[k]!.toFixed(volts[k]! < 10 ? 3 : 2)} V` : 'not connected';
 

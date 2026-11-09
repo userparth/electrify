@@ -36,7 +36,7 @@ export function CodePanel() {
     setBusy(false);
   };
   const stop = () => useBench.getState().setProps(inst.id, { run: false });
-  const send = () => { runner.built?.runtimes.get(inst.id)?.serial?.write(line + '\n'); setLine(''); };
+  const send = () => { runner.serialWrite(inst.id, line + '\n'); setLine(''); };
 
   return (
     <section className="wb-code">

@@ -15,6 +15,7 @@ function LessonPanel({ lesson, next, storageKey }: { lesson: Lesson; next?: { hr
   useEffect(() => { const p = loadProgress()[lesson.id]; if (p) setProg(p); }, [lesson.id]);
   useEffect(() => {
     const t = setInterval(() => {
+      if (!runner.synced()) return;
       setProg(p => {
         let n = p.steps;
         while (n < lesson.steps.length) {

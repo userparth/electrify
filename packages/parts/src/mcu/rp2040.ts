@@ -23,6 +23,8 @@ export class PicoMachine {
   readonly mcu: RP2040 = this.sim.rp2040;
   private cdc: USBCDC;
   private tx: number[] = [];
+  private heldRead = -1;
+  private readDone: (ep: number, size: number) => void;
   private out = '';
   private mode: Mode = 'boot';
   private pending: { code: string; runId: number } | null = null;
@@ -49,9 +51,15 @@ export class PicoMachine {
     this.cdc = new USBCDC(this.mcu.usbCtrl);
     this.cdc.onDeviceConnected = () => this.send('\r');
     this.cdc.onSerialData = d => this.receive(d);
+    // rp2040js answers every OUT read at once, even empty, so TinyUSB re-arms in an IRQ storm; a real host NAKs until it has data.
+    const usb = this.mcu.usbCtrl;
+    this.readDone = usb.onEndpointRead!;
+    usb.onEndpointRead = (ep, size) => { if (ep === this.outEp && !this.tx.length && !this.cdc.txFIFO.itemCount) this.heldRead = size; else this.readDone(ep, size); };
     this.mcu.core.PC = 0x10000000;
     for (const pin of this.mcu.gpio) pin.addListener((st, old) => { if (st >= 2 && old >= 2 && st !== old) this.yieldReq = true; });
   }
+
+  private get outEp() { return (this.cdc as unknown as { outEndpoint: number }).outEndpoint; }
 
   get ready() { return this.mode !== 'boot'; }
   get nanos() { return this.sim.clock.nanos; }
@@ -77,8 +85,10 @@ export class PicoMachine {
   }
 
   private pump() {
+    if (!this.tx.length) return;
     const f = this.cdc.txFIFO;
     while (this.tx.length && !f.full) f.push(this.tx.shift()!);
+    if (this.heldRead >= 0) { const size = this.heldRead; this.heldRead = -1; this.readDone(this.outEp, size); }
   }
 
   send(text: string) { for (let i = 0; i < text.length; i++) this.tx.push(text.charCodeAt(i) & 0xff); }
