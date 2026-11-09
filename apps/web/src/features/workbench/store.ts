@@ -131,12 +131,12 @@ class Runner {
   private dirty = false;
   private raf = 0;
   private sentVer = 0;
-  private builtVer = -1;
   private frameVer = -1;
   private unsub: (() => void) | null = null;
 
   /** True once the worker has simulated the doc currently in the store. */
-  synced() { return !this.dirty && this.builtVer === this.sentVer && this.frameVer === this.sentVer; }
+  // The worker posts `built` before the first frame of a rebuild; in-place prop updates only send a frame.
+  synced() { return !this.dirty && this.frameVer === this.sentVer; }
 
   rebuild() { this.dirty = true; }
 
@@ -188,7 +188,7 @@ class Runner {
 
   private receive(m: FromSim) {
     if (m.type === 'built') {
-      this.builtVer = m.ver; this.net = m.net;
+      this.net = m.net;
       if (m.errors.length) useBench.setState(s => ({ log: [...s.log, ...m.errors.map(message => ({ t: 0, e: { kind: 'build', severity: 'error' as const, message } }))] }));
       return;
     }

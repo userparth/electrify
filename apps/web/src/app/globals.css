@@ -121,3 +121,7 @@ kbd{border:1.2px solid currentColor;border-radius:4px;padding:0 4px;font-size:10
 .acct-grid th.asg{background:#f3e3a8}
 .acct-danger{border-color:#d6452f}
 .btn.danger{background:#d6452f;color:#fff}
+.iso-host{position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 40%,#f6f1e4 0%,#e9e1cd 100%);touch-action:none;user-select:none}
+.iso-tools{position:absolute;top:10px;left:10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.iso-wob{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;background:var(--paper);border:1.6px solid var(--ink);border-radius:14px;padding:3px 10px;box-shadow:2px 2px 0 var(--ink)}
+.iso-wob input{width:80px;accent-color:var(--ink)}

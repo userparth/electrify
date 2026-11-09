@@ -9,7 +9,7 @@ import type { Doc } from './model';
 import { runner, useBench } from './store';
 import { asset } from '@/lib/paths';
 
-const Scene3D = dynamic(() => import('./three/Scene3D'), { ssr: false, loading: () => <div className="wb-canvas wb-3d-loading">Loading 3D…</div> });
+const IsoView = dynamic(() => import('./iso/IsoView'), { ssr: false, loading: () => <div className="wb-canvas wb-3d-loading">Loading…</div> });
 
 export function Workbench({ storageKey, initial, dt, side, title }: { storageKey?: string; initial?: () => Doc; dt?: number; side?: ReactNode; title?: ReactNode } = {}) {
   const view3d = useBench(s => s.view3d);
@@ -34,7 +34,7 @@ export function Workbench({ storageKey, initial, dt, side, title }: { storageKey
     <div className="wb">
       <header className="wb-head"><a href={asset('/')} className="wb-brand"><b>⚡ Electronics Bench</b></a>{title ?? <><a href={asset('/learn/')} className="wb-muted">Lessons</a><a href={asset('/learn/#solar')} className="wb-muted">Solar module</a></>}<Toolbar /><AccountButton /></header>
       <Palette />
-      <div className="wb-center">{view3d ? <Scene3D /> : <Canvas />}<CodePanel /></div>
+      <div className="wb-center">{view3d ? <IsoView /> : <Canvas />}<CodePanel /></div>
       <aside className="wb-side">
         {side}
         <h3>Selected</h3>
