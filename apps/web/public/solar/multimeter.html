@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solar Bench — Multimeter lab</title>
+<link rel="stylesheet" href="bench.css">
+<style>
+.stats{grid-template-columns:repeat(4,auto)}
+.stat b{font-size:16px;white-space:nowrap}
+.ctl output{float:right;font-size:11px;font-weight:700}
+.howto li{margin-bottom:4px}
+kbd{border:1.4px solid var(--ink);border-radius:5px;padding:0 5px;font-size:11px;background:var(--paper)}
+</style>
+</head>
+<body>
+<div class="app">
+<aside id="side" data-cur="mm"></aside>
+<script src="bench.js"></script>
+<main>
+  <div class="head">
+    <div>
+      <h2>🔧 Multimeter lab</h2>
+      <div class="kicker">Themisto TH-M100 · drag the meter · drag the probes · snap to any point</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Knob</span><b id="sKnob">—</b></div>
+      <div class="stat"><span>Red probe socket</span><b id="sSock">—</b></div>
+      <div class="stat"><span>Probes on</span><b id="sOn">—</b></div>
+      <div class="stat"><span>Display</span><b id="sRead">—</b></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="actions">
+      <button class="btn" id="bOpen">Show / hide meter <kbd>M</kbd></button>
+      <button class="btn" id="bDemo">Demo: battery in DC</button>
+      <button class="btn" id="bPark">Park probes</button>
+      <div class="hint" id="hint">Drag the red and black probe tips onto any dot. Click the knob or its labels to change mode.</div>
+    </div>
+    <svg id="fig" viewBox="0 0 900 560" aria-label="Multimeter test bench"></svg>
+  </div>
+
+  <div class="controls">
+    <div class="ctl"><span>Sun on panel <output id="oSun"></output></span><input type="range" id="cSun" min="0" max="100" value="90"></div>
+    <div class="ctl"><span>Battery charge <output id="oBat"></output></span><input type="range" id="cBat" min="0" max="100" value="95"></div>
+    <div class="ctl"><span>Hand-drawn wobble <output id="oWob"></output></span><input type="range" id="cWob" min="0" max="6" step="0.5" value="2"></div>
+    <div class="ctl"><span>Tip</span><span style="text-transform:none;letter-spacing:0;color:inherit;font-size:12px">The same meter is on every figure page: <kbd>M</kbd> or the 🔧 button.</span></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h3>How to use</h3>
+      <ol class="howto note">
+        <li><b>Move the meter:</b> drag its yellow body anywhere.</li>
+        <li><b>Probes:</b> drag a probe tip; it snaps to the nearest dot (a label shows what it is). Drop it in empty space to leave it hanging.</li>
+        <li><b>Knob:</b> click a mode label (OFF, V, Ω, ·)), A), click the knob to step, or scroll on it.</li>
+        <li><b>FUNC</b> toggles AC/DC in V and A. The meter starts in AC on purpose, like the real one.</li>
+        <li><b>Sockets:</b> click 10A or VΩmA to move the red plug. Black always stays in COM.</li>
+        <li><b>HOLD</b> freezes the display. After a mistake, click <i>✕ replace fuse</i> on the meter.</li>
+      </ol>
+      <h3>Selected part</h3>
+      <div class="card" id="partCard"><div class="k">Nothing selected</div>Click any part or label.</div>
+      <h3>On this bench</h3>
+      <div id="chips"></div>
+    </div>
+    <div>
+      <h3>Serial monitor (event log)</h3>
+      <div class="log" id="log"></div>
+      <h3>Check yourself</h3>
+      <div id="quiz"></div>
+      <h3>Practice task</h3>
+      <div class="note" style="margin-bottom:6px">Do these with the floating meter. Each one ticks itself.</div>
+      <ul class="check" id="check"></ul>
+    </div>
+  </div>
+</main>
+</div>
+<script src="kit.js"></script>
+<script src="components/multimeter.js"></script>
+<script>
+const I = iso(16, 430, 150), { P, box, poly, line, faceY } = I;
+const st = { sun: 0.9, soc: 0.95, wob: 2 };
+const log = makeLog();
+
+const battV = () => 11.6 + 1.1 * st.soc;
+const voc = () => st.sun > 0.01 ? 21 + 3.5 * Math.min(1, st.sun * 1.3) : 0.2;
+const R = { 'f1a|f1b': 0.02, 'f2a|f2b': Infinity, 'r1|r2': 220, 'w1|w2': 0.05 };
+
+Multimeter.setModel({
+  nets: () => ({
+    'b+': { v: battV(), g: 'bat', imax: 300 }, 'b-': { v: 0, g: 'bat', imax: 300 },
+    'p+': { v: voc(), g: 'pv', imax: 2.83 * st.sun }, 'p-': { v: 0, g: 'pv', imax: 2.83 * st.sun },
+    L: { v: 0, vac: 230, g: 'ac', imax: 60 }, N: { v: 0, vac: 0, g: 'ac', imax: 60 },
+  }),
+  resistance: (a, b) => R[`${a}|${b}`] ?? R[`${b}|${a}`] ?? Infinity,
+});
+
+const PARTS = {
+  batt: { name: 'Battery 12V 26Ah', rows: [['Expect', '≥12.6V new, 12.2V = 50%'], ['Mode', 'V, DC, red in VΩmA'], ['Never', 'Red in 10A across these terminals']] },
+  panel: { name: 'Solar panel (MC4 leads)', rows: [['Voc', '22–24.5V in sun, open circuit'], ['Isc', '~2.5–2.8A: knob A, DC, red in 10A'], ['Safe?', 'Yes: panel current is limited to ~2.83A']] },
+  fuse1: { name: 'Blade fuse 10A (good)', rows: [['Test', 'Continuity ·)) → beep, ~0Ω'], ['Rule', 'Test fuses out of the circuit']] },
+  fuse2: { name: 'Blade fuse 10A (blown)', rows: [['Test', 'Continuity → OL, no beep'], ['Look', 'Broken strip inside the window']] },
+  res: { name: 'Resistor 220Ω', rows: [['Bands', 'red-red-brown-gold = 220Ω ±5%'], ['Mode', 'Ω, nothing powered']] },
+  wire: { name: 'Wire piece', rows: [['Test', 'Continuity end to end → beep'], ['Use', 'Find broken wires inside insulation']] },
+  ac: { name: '230V AC socket', rows: [['Mode', 'V with FUNC → AC'], ['Danger', 'Never Ω or A on mains'], ['Expect', '~220–240V between L and N']] },
+};
+const select = makeParts(PARTS, () => render());
+
+function anchor(id, node, label, x, y, z) {
+  const [a, b] = P(x, y, z);
+  return `<circle data-anchor="${id}" data-node="${node}" data-label="${label}" cx="${a.toFixed(1)}" cy="${b.toFixed(1)}" r="5" fill="#f2efe7" stroke="#1d1d1b" stroke-width="1.5"/>`;
+}
+
+function build() {
+  let o = wobbleDefs(st.wob) + '<g filter="url(#wob)">' + box(0, 0, -0.8, 34, 20, 0.8, '#e6dcc6');
+  o += `<g class="part" data-part="panel">`;
+  const A = [2, 1, 6], B = [12, 1, 6], C = [12, 6, 1.5], D = [2, 6, 1.5];
+  [[3, 1], [11, 1]].forEach(([x, y]) => o += line([x, y, 0], [x, y, 5.6], 'class="ink" stroke-width="2.5"'));
+  o += poly([P(...A), P(...B), P(...C), P(...D)], '#c9ced2');
+  o += poly([P(2.4, 1.3, 5.7), P(11.6, 1.3, 5.7), P(11.6, 5.7, 1.8), P(2.4, 5.7, 1.8)], st.sun > 0.05 ? '#2c4a96' : '#22345f');
+  for (let i = 1; i < 6; i++) o += line([2.4 + 9.2 * i / 6, 1.3, 5.7], [2.4 + 9.2 * i / 6, 5.7, 1.8], 'stroke="#8fb0ea" stroke-width=".8"');
+  o += `<path d="${I.path([[8, 6, 1.4], [9, 7.5, 0], [13.5, 7.5, 0]])}" fill="none" stroke="#d6452f" stroke-width="3"/>`;
+  o += `<path d="${I.path([[8.8, 6, 1.4], [9.6, 8.6, 0], [13.5, 8.6, 0]])}" fill="none" stroke="#262624" stroke-width="3"/>`;
+  o += box(13.5, 7.1, 0, 1.4, 0.8, 0.5, '#d6452f') + box(13.5, 8.2, 0, 1.4, 0.8, 0.5, '#262624') + `</g>`;
+  o += `<g class="part" data-part="batt">` + box(3, 11, 0, 8, 5, 5.5, '#2f2f33');
+  o += `<g transform="${faceY(3, 16, 0)}"><text x="${4 * 16}" y="${-3 * 16}" text-anchor="middle" font-size="13" font-weight="700" fill="#eee">EXIDE 12V</text></g>`;
+  o += box(4.2, 12, 5.5, 1, 1, 0.5, '#d6452f') + box(8.8, 12, 5.5, 1, 1, 0.5, '#262624') + `</g>`;
+  o += `<g class="part" data-part="fuse1">` + box(17, 11.5, 0, 2.4, 0.6, 1.6, '#f0c13a') + `<g transform="${faceY(17, 12.1, 0)}"><text x="19" y="-12" text-anchor="middle" font-size="9" font-weight="700">10</text></g>` + line([17.4, 12, 0], [17.4, 12, -0.3]) + `</g>`;
+  o += `<g class="part" data-part="fuse2">` + box(17, 15, 0, 2.4, 0.6, 1.6, '#b9b4a8') + `<g transform="${faceY(17, 15.6, 0)}"><text x="19" y="-12" text-anchor="middle" font-size="10" font-weight="700" fill="#b0301f">✕</text></g></g>`;
+  o += `<g class="part" data-part="res">` + line([21.5, 12, 0.5], [27.5, 12, 0.5], 'stroke="#888" stroke-width="2"') + box(23.2, 11.6, 0.1, 2.6, 0.8, 0.8, '#e8d3a8');
+  [[23.7, '#d6452f'], [24.2, '#d6452f'], [24.7, '#7a4b22'], [25.3, '#c9a23a']].forEach(([x, c]) => o += `<polygon points="${I.pts([P(x, 12.4, 0.1), P(x + 0.22, 12.4, 0.1), P(x + 0.22, 12.4, 0.9), P(x, 12.4, 0.9)])}" fill="${c}"/>`);
+  o += `</g>`;
+  o += `<g class="part" data-part="wire"><path d="${I.path([[21.5, 16, 0.2], [23.5, 17, 0.2], [25.5, 15.6, 0.2], [27.5, 16.4, 0.2]])}" fill="none" stroke="#d6452f" stroke-width="5" stroke-linecap="round"/>`
+    + line([21.5, 16, 0.2], [21.0, 15.8, 0.2], 'stroke="#c27c3a" stroke-width="2.5"') + line([27.5, 16.4, 0.2], [28.0, 16.6, 0.2], 'stroke="#c27c3a" stroke-width="2.5"') + `</g>`;
+  o += `<g class="part" data-part="ac">` + box(28, 2.5, 0, 4.6, 1, 6.5, '#efece4');
+  o += `<g transform="${faceY(28, 3.5, 0)}"><circle cx="${1.6 * 16}" cy="${-3.6 * 16}" r="4" fill="#333"/><circle cx="${3 * 16}" cy="${-3.6 * 16}" r="4" fill="#333"/><circle cx="${2.3 * 16}" cy="${-4.8 * 16}" r="5" fill="#333"/><text x="${2.3 * 16}" y="${-1.2 * 16}" text-anchor="middle" font-size="9" fill="#b0301f" font-weight="700">230V AC</text></g></g>`;
+  o += '</g>';
+
+  o += anchor('bat-pos', 'b+', 'Battery +', 4.7, 12.5, 6) + anchor('bat-neg', 'b-', 'Battery −', 9.3, 12.5, 6);
+  o += anchor('pv-pos', 'p+', 'Panel MC4 +', 15, 7.5, 0.25) + anchor('pv-neg', 'p-', 'Panel MC4 −', 15, 8.6, 0.25);
+  o += anchor('f1-a', 'f1a', 'Good fuse, leg 1', 17, 11.8, 0.8) + anchor('f1-b', 'f1b', 'Good fuse, leg 2', 19.4, 11.8, 0.8);
+  o += anchor('f2-a', 'f2a', 'Blown fuse, leg 1', 17, 15.3, 0.8) + anchor('f2-b', 'f2b', 'Blown fuse, leg 2', 19.4, 15.3, 0.8);
+  o += anchor('r-1', 'r1', 'Resistor leg 1', 21.5, 12, 0.5) + anchor('r-2', 'r2', 'Resistor leg 2', 27.5, 12, 0.5);
+  o += anchor('w-1', 'w1', 'Wire end 1', 21, 15.8, 0.2) + anchor('w-2', 'w2', 'Wire end 2', 28, 16.6, 0.2);
+  o += `<g transform="${faceY(28, 3.5, 0)}"><circle data-anchor="ac-l" data-node="L" data-label="AC Live (L)" cx="${1.6 * 16}" cy="${-3.6 * 16}" r="5" fill="none" stroke="#1d1d1b" stroke-width="1.2"/><circle data-anchor="ac-n" data-node="N" data-label="AC Neutral (N)" cx="${3 * 16}" cy="${-3.6 * 16}" r="5" fill="none" stroke="#1d1d1b" stroke-width="1.2"/></g>`;
+
+  const lab = (t, part, at, dx, dy) => { const [x, y] = P(...at); return pill(x + dx, y + dy, t, part, x, y, sel); };
+  o += lab('SOLAR PANEL', 'panel', [7, 1, 6], -40, -40) + lab('BATTERY 12V', 'batt', [3, 16, 3], -60, 40);
+  o += lab('FUSE 10A', 'fuse1', [18, 11.5, 1.6], 30, -50) + lab('BLOWN FUSE', 'fuse2', [18, 15, 0.2], -30, 60);
+  o += lab('RESISTOR 220Ω', 'res', [24.5, 11.6, 0.9], 60, -40) + lab('WIRE', 'wire', [25.5, 15.6, 0.2], 40, 50);
+  o += lab('230V SOCKET', 'ac', [30, 2.5, 6.5], 40, -30);
+  $('fig').innerHTML = o;
+}
+let sel = null;
+
+const CHECK = [
+  ['acmode', 'See what AC mode shows on the battery (almost 0)'],
+  ['dc', 'Battery in V DC: ≥12.6V'],
+  ['rev', 'Swap probes on the battery: minus sign'],
+  ['voc', 'Panel Voc in the sun: 22–24.5V'],
+  ['isc', 'Panel Isc: knob A, DC, red in 10A, ~2.5–2.8A'],
+  ['cont', 'Good fuse beeps on continuity'],
+  ['blown', 'Blown fuse reads OL'],
+  ['res', 'Resistor reads ~220Ω'],
+  ['ac', 'AC socket in V AC: ~230V'],
+  ['short', 'Learn the hard way: red in 10A across the battery'],
+];
+const tick = makeChecklist(CHECK, () => log('🎉 All multimeter drills done. You are ready for the real meter.'));
+const pair = (e, a, b) => (e.redNode === a && e.blackNode === b) || (e.redNode === b && e.blackNode === a);
+
+Multimeter.on(e => {
+  if (e.type === 'reading') {
+    log(`📟 ${e.text}  (${e.knob}${e.knob === 'V' || e.knob === 'A' ? (e.ac ? ' AC' : ' DC') : ''}, red: ${e.red}, black: ${e.black})`);
+    if (pair(e, 'b+', 'b-') && e.knob === 'V') {
+      if (e.ac) tick('acmode');
+      else if (e.value >= 12.6) tick('dc');
+      if (!e.ac && e.value < -10) { tick('rev'); log('Minus sign = probes reversed. Nothing is wrong with the battery.', 'w'); }
+    }
+    if (pair(e, 'p+', 'p-') && e.knob === 'V' && !e.ac && Math.abs(e.value) >= 22) tick('voc');
+    if (pair(e, 'p+', 'p-') && e.knob === 'A' && !e.ac && Math.abs(e.value) >= 2.3) { tick('isc'); log('Now move the red plug back to VΩmA before measuring voltage!', 'w'); }
+    if (pair(e, 'f1a', 'f1b') && e.knob === 'CONT' && e.value < 30) tick('cont');
+    if (pair(e, 'f2a', 'f2b') && (e.knob === 'CONT' || e.knob === 'OHM') && !isFinite(e.value)) tick('blown');
+    if (pair(e, 'r1', 'r2') && e.knob === 'OHM' && Math.abs(e.value - 220) < 15) tick('res');
+    if (pair(e, 'L', 'N') && e.knob === 'V' && e.ac && e.value > 200) tick('ac');
+  }
+  if (e.type === 'short') { tick('short'); log(`💥 SHORT! ~${Math.round(e.amps)}A through the meter's 10A socket. The meter fuse blew. On a real battery: sparks, melted probe tips.`, 'e'); }
+  if (e.type === 'fuse-mA') log('💥 mA fuse blown: current through the VΩmA socket. Big current only through 10A.', 'e');
+  if (e.type === 'ohm-live') log('Ω mode on a live circuit gives garbage and can damage the meter. Power off first.', 'w');
+  if (e.type === 'attach') log(`${e.probe === 'red' ? '🔴' : '⚫'} ${e.probe} probe → ${e.anchor}`);
+  if (e.type === 'fuse-replaced') log('Meter fuse replaced.');
+});
+
+function render() {
+  build();
+  const m = Multimeter.state();
+  $('sKnob').textContent = m.open ? `${m.knob}${m.knob === 'V' || m.knob === 'A' ? (m.ac ? ' AC' : ' DC') : ''}` : 'hidden';
+  $('sSock').textContent = m.socket === 'VmA' ? 'VΩmA' : '10A';
+  $('sSock').className = m.socket === '10A' ? 'bad' : '';
+  $('sOn').textContent = `${m.red || '—'} / ${m.black || '—'}`;
+  $('oSun').textContent = Math.round(st.sun * 100) + '%'; $('oBat').textContent = `${battV().toFixed(2)}V`; $('oWob').textContent = st.wob;
+}
+setInterval(() => {
+  const m = Multimeter.state();
+  $('sKnob').textContent = m.open ? `${m.knob}${m.knob === 'V' || m.knob === 'A' ? (m.ac ? ' AC' : ' DC') : ''}` : 'hidden';
+  $('sSock').textContent = m.socket === 'VmA' ? 'VΩmA' : '10A'; $('sSock').className = m.socket === '10A' ? 'bad' : '';
+  $('sOn').textContent = `${m.red || '—'} / ${m.black || '—'}`; $('sRead').textContent = m.reading || '—';
+}, 250);
+
+bindFigClicks($('fig'), id => { sel = id; select(id); });
+$('bOpen').onclick = () => Multimeter.toggle();
+$('bDemo').onclick = () => { Multimeter.set({ knob: 'V', ac: false, socket: 'VmA' }); Multimeter.attach('red', 'bat-pos'); Multimeter.attach('black', 'bat-neg'); log('Demo: V, DC, red in VΩmA, red on +, black on −.'); };
+$('bPark').onclick = () => { Multimeter.close(); Multimeter.open(); log('Probes parked.'); };
+const num = (id, k, f = v => v) => $(id).oninput = e => { st[k] = f(+e.target.value); render(); };
+num('cSun', 'sun', v => v / 100); num('cBat', 'soc', v => v / 100); num('cWob', 'wob');
+
+renderQuiz([
+  ['The meter shows 0.02 on a battery. What is wrong?', ['Battery is dead', 'Meter is in AC; press FUNC for DC', 'Probes reversed'], 1, 'DC on an AC range reads near zero. The display shows AC/DC at top left.'],
+  ['Battery shows -12.64V. Meaning?', ['Probes reversed', 'Battery is reversed inside', 'Meter broken'], 0, 'Only the sign flips. Red on +, black on −.'],
+  ['Why is measuring panel Isc with the 10A socket OK, but not the battery?', ['Panel current is limited to ~2.83A; the battery can push hundreds of amps', 'Panel is AC', 'Battery voltage is higher'], 0, 'The 10A socket is almost 0Ω. Across a battery it is a dead short.'],
+  ['How do you check a fuse?', ['V mode on the live circuit', 'Out of circuit, continuity: beep = good, OL = blown', 'A mode'], 1, 'Continuity only on unpowered parts.'],
+]);
+
+build(); render();
+log('Lab ready. The meter is open: drag the probes onto the dots.');
+setTimeout(() => Multimeter.open([Math.max(scrollX + 40, $('fig').getBoundingClientRect().right - 230 + scrollX), $('fig').getBoundingClientRect().top + scrollY + 10]), 50);
+</script>
+</body>
+</html>

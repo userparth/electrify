@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solar Bench — Fig. 02 Solar panel</title>
+<link rel="stylesheet" href="bench.css">
+<style>
+.stats{grid-template-columns:repeat(5,auto)}
+.stat b{font-size:16px;white-space:nowrap}
+.controls{row-gap:14px}
+.ctl output{float:right;font-size:11px;font-weight:700}
+.cell{cursor:pointer}
+.cell:hover{stroke:#f3c33b;stroke-width:2}
+svg#iv{width:100%;height:auto;display:block;background:var(--paper);border:1.6px solid var(--ink);border-radius:12px;box-shadow:2px 2px 0 var(--ink)}
+svg#iv text{font:10px ui-monospace,Menlo,monospace}
+</style>
+</head>
+<body>
+<div class="app">
+<aside id="side" data-cur="02"></aside>
+<script src="bench.js"></script>
+
+<main>
+  <div class="head">
+    <div>
+      <h2>Fig. 02 — Solar panel</h2>
+      <div class="kicker">Loom 55W mono PERC half-cut · 405×775 mm · ~25°N</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Time</span><b id="sTime">10:00</b></div>
+      <div class="stat"><span>Sun</span><b id="sSun">—</b></div>
+      <div class="stat"><span>Sun on panel</span><b id="sG">—</b></div>
+      <div class="stat"><span>MPPT / PWM</span><b id="sP">—</b></div>
+      <div class="stat"><span>Voc · cell</span><b id="sVoc">—</b></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="actions">
+      <button class="btn" id="bSouth">Set South + 25°</button>
+      <button class="btn" id="bBest">Find today's best tilt</button>
+      <div class="dd">
+        <button class="btn" data-menu="mShade">Add shade ▾</button>
+        <div class="menu" id="mShade">
+          <button data-act="leaf">A leaf on one cell 🍃</button>
+          <button data-act="tank">Water-tank shadow (bottom row)</button>
+          <button data-act="cloth">Cloth on a line (one side)</button>
+          <button data-act="clear">Remove all shade</button>
+        </div>
+      </div>
+      <div class="dd">
+        <button class="btn" data-menu="mMeter">Multimeter ▾</button>
+        <div class="menu" id="mMeter">
+          <button data-act="voc">Measure Voc (open circuit)</button>
+          <button data-act="isc">Measure Isc (10A socket)</button>
+          <button data-act="pwm">How much on a PWM controller</button>
+          <button data-act="mppt">How much on an MPPT controller</button>
+        </div>
+      </div>
+      <button class="btn" id="bExpl">Exploded view</button>
+      <button class="btn" id="bClean">Clean the panel</button>
+      <div class="hint" id="hint"></div>
+    </div>
+    <svg id="fig" viewBox="0 30 900 560" aria-label="Isometric solar panel"></svg>
+  </div>
+
+  <div class="controls">
+    <div class="ctl"><span>Time of day <output id="oTime"></output></span><input type="range" id="cTime" min="300" max="1140" value="600"></div>
+    <div class="ctl"><span>Tilt <output id="oTilt"></output></span><input type="range" id="cTilt" min="0" max="90" value="10"></div>
+    <div class="ctl"><span>Direction <output id="oAz"></output></span><input type="range" id="cAz" min="-180" max="180" step="5" value="-60"></div>
+    <div class="ctl"><span>Weather · season</span>
+      <select id="cWx"><option value="saaf">Clear sun</option><option value="badal">Cloudy</option><option value="barish">Rain</option></select>
+      <select id="cSeason"><option value="nov">Today (8 Nov)</option><option value="dec">21 Dec</option><option value="mar">21 Mar</option><option value="jun">21 Jun</option></select>
+    </div>
+    <div class="ctl"><span>Air temperature <output id="oAmb"></output></span><input type="range" id="cAmb" min="2" max="46" value="26"></div>
+    <div class="ctl"><span>Dust <output id="oDust"></output></span><input type="range" id="cDust" min="0" max="30" value="0"></div>
+    <div class="ctl"><span>Play · speed</span>
+      <button class="btn" id="cPlay" style="padding:1px 10px">▶</button>
+      <select id="cSpeed"><option value="2">1x</option><option value="10" selected>5x</option><option value="40">20x</option></select>
+    </div>
+    <div class="ctl"><span>Hand-drawn wobble <output id="oWob"></output></span><input type="range" id="cWob" min="0" max="6" step="0.5" value="2"></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h3>In this figure</h3>
+      <div class="note">A panel's power depends on three things: how directly the sunlight hits it (tilt + direction), how hot it is, and whether anything shades it. Turn the panel, add shade, change the time, and watch the I-V curve. Press M for the multimeter and probe the MC4 leads.</div>
+      <h3>Selected part</h3>
+      <div class="card" id="partCard"><div class="k">Nothing selected</div>Click the panel or any label. The exploded view shows every layer.</div>
+      <h3>Panel parts</h3>
+      <div id="chips"></div>
+      <h3>Today's estimate</h3>
+      <div class="card" id="dayCard"></div>
+    </div>
+    <div>
+      <h3>I-V curve (live)</h3>
+      <svg id="iv" viewBox="0 0 420 230"></svg>
+      <h3>Serial monitor (event log)</h3>
+      <div class="log" id="log"></div>
+      <h3>Check yourself</h3>
+      <div id="quiz"></div>
+      <h3>Practice task</h3>
+      <div class="note" style="margin-bottom:6px">Do these in the figure; each step ticks itself. Measure the same things on the real panel.</div>
+      <ul class="check" id="check"></ul>
+    </div>
+  </div>
+</main>
+</div>
+
+<script src="components/multimeter.js"></script>
+<script>
+const S = 15, OX = 470, OY = 230, RAD = Math.PI / 180, LAT = 25 * RAD;
+const P = (x, y, z = 0) => [OX + (x - y) * 0.866 * S, OY + (x + y) * 0.5 * S - z * S];
+const pts = a => a.map(p => p.map(n => n.toFixed(1)).join(',')).join(' ');
+const $ = id => document.getElementById(id);
+const add = (a, b, k = 1) => a.map((v, i) => v + b[i] * k);
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const VIEW = [1, 1, 1].map(v => v / Math.sqrt(3));
+function sh(hex, f) {
+  const n = parseInt(hex.slice(1), 16), c = [n >> 16, n >> 8 & 255, n & 255];
+  return '#' + c.map(v => Math.round(f < 0 ? v * (1 + f) : v + (255 - v) * f)).map(v => v.toString(16).padStart(2, '0')).join('');
+}
+const poly = (p, fill, extra = '') => `<polygon points="${pts(p)}" fill="${fill}" class="ink" ${extra}/>`;
+function box(x, y, z, w, d, h, hex) {
+  return poly([P(x, y, z + h), P(x + w, y, z + h), P(x + w, y + d, z + h), P(x, y + d, z + h)], sh(hex, .22))
+    + poly([P(x, y + d, z), P(x + w, y + d, z), P(x + w, y + d, z + h), P(x, y + d, z + h)], hex)
+    + poly([P(x + w, y, z), P(x + w, y + d, z), P(x + w, y + d, z + h), P(x + w, y, z + h)], sh(hex, -.25));
+}
+const line = (a, b, extra = '') => { const [x1, y1] = P(...a), [x2, y2] = P(...b); return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ${extra}/>`; };
+
+const W = 13, L = 6.8, COLS = 9, ROWS = 4, C0 = [11, 10];
+const SEASONS = { nov: -16.9, dec: -23.44, mar: 0, jun: 23.44 };
+const WX = { saaf: [1, 1], badal: [0.2, 1.7], barish: [0.04, 1.1] };
+const SHADE = { leaf: 0.1, tank: 0.25, cloth: 0.3 };
+const VBAT = 13.2;
+
+const st = {
+  t: 600, tilt: 10, az: -60, season: 'nov', wx: 'saaf', amb: 26, dust: 0, wob: 2,
+  shade: Array(ROWS * COLS).fill(1), tank: false, exploded: false, playing: false, speed: 10,
+  sel: null, whM: 0, whP: 0, seen: new Set(),
+};
+
+function sunPos(t) {
+  const H = (t / 60 - 12) * 15 * RAD, d = SEASONS[st.season] * RAD;
+  const alt = Math.asin(Math.sin(LAT) * Math.sin(d) + Math.cos(LAT) * Math.cos(d) * Math.cos(H));
+  const A = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(LAT) - Math.tan(d) * Math.cos(LAT));
+  return { alt, A, v: [Math.cos(alt) * Math.sin(A), Math.cos(alt) * Math.cos(A), Math.sin(alt)] };
+}
+
+// Facing direction f: az 0 = south (+y), +90 = west (+x).
+function geom(tilt = st.tilt, az = st.az) {
+  const b = tilt * RAD, p = az * RAD;
+  const f = [Math.sin(p), Math.cos(p), 0], e1 = [Math.cos(p), -Math.sin(p), 0];
+  const up = [-f[0] * Math.cos(b), -f[1] * Math.cos(b), Math.sin(b)];
+  const n = [f[0] * Math.sin(b), f[1] * Math.sin(b), Math.cos(b)];
+  const C = [C0[0], C0[1], L / 2 * Math.sin(b) + 1.6];
+  const at = (u, w, off = 0) => add(add(add(C, e1, (u - .5) * W), up, (.5 - w) * L), n, off);
+  return { f, e1, up, n, C, at };
+}
+
+function irradiance(sun, g) {
+  if (sun.alt <= 0.005) return { G: 0, cos: 0 };
+  const am = 1 / Math.max(Math.sin(sun.alt), 0.06);
+  const dni = 0.8 * 1353 * Math.pow(0.7, Math.pow(am, 0.678));
+  const cos = Math.max(0, dot(g.n, sun.v));
+  const [kb, kd] = WX[st.wx];
+  return { G: dni * cos * kb + 0.1 * dni * (1 + g.n[2]) / 2 * kd, cos };
+}
+
+const cellTemp = G => st.amb + G / 800 * 25;
+
+// 3 bypass-diode substrings = column groups 0-2, 3-5, 6-8.
+function ivCurve(G, Tc) {
+  const g = G / 1000 * (1 - st.dust / 100);
+  if (g < 0.002) return { pts: [], voc: 0, isc: 0, mpp: [0, 0], pwm: [VBAT, 0] };
+  const isc = 2.83 * g;
+  const vocSub = (24.5 * (1 - 0.0028 * (Tc - 25)) + 0.5 * Math.log(g)) / 3, a = 1.45 / 3;
+  const subI = [0, 1, 2].map(k => {
+    let m = 1;
+    for (let r = 0; r < ROWS; r++) for (let c = k * 3; c < k * 3 + 3; c++) m = Math.min(m, st.shade[r * COLS + c]);
+    return isc * m;
+  });
+  const out = [];
+  for (let i = 0; i <= 160; i++) {
+    const I = isc * i / 160 * 0.999;
+    const V = subI.reduce((s, ik) => s + (I < ik ? Math.max(-0.5, vocSub + a * Math.log(1 - I / ik)) : -0.5), 0);
+    if (V < 0) { out.push([0, I]); break; }
+    out.push([V, I]);
+  }
+  if (out[out.length - 1][0] > 0) out.push([0, out[out.length - 1][1]]);
+  const mpp = out.reduce((b, p) => p[0] * p[1] > b[0] * b[1] ? p : b, [0, 0]);
+  let pwmI = 0;
+  for (let i = 1; i < out.length; i++) if (out[i - 1][0] >= VBAT && out[i][0] < VBAT) { pwmI = out[i][1]; break; }
+  if (out.length && out[out.length - 1][0] >= VBAT) pwmI = out[out.length - 1][1];
+  return { pts: out, voc: out[0][0], isc: out[out.length - 1][1], mpp, pwm: [VBAT, pwmI] };
+}
+
+function snapshot(t = st.t, tilt = st.tilt, az = st.az) {
+  const g = geom(tilt, az), sun = sunPos(t), { G, cos } = irradiance(sun, g), Tc = cellTemp(G);
+  return { g, sun, G, cos, Tc, iv: ivCurve(G, Tc) };
+}
+function dayEnergy(tilt = st.tilt, az = st.az) {
+  let m = 0, p = 0;
+  for (let t = 300; t <= 1140; t += 15) { const s = snapshot(t, tilt, az); m += s.iv.mpp[0] * s.iv.mpp[1] / 4; p += s.iv.pwm[0] * s.iv.pwm[1] / 4; }
+  return { m, p };
+}
+
+const PARTS = {
+  glass: { name: 'Tempered glass', rows: [['Job', 'Protects the cells from rain, hail and dust'], ['Thickness', '~3.2 mm, anti-reflective coating'], ['Note', 'Dust can eat 5–15% of the power. Clean with a wet cloth, nothing abrasive.']] },
+  eva: { name: 'EVA layer', rows: [['Job', 'Bonds the cells to the glass and backsheet, and seals them'], ['Looks', 'Transparent after lamination'], ['Ageing', 'Turns yellow/brown on old panels']] },
+  cells: { name: 'Solar cells', rows: [['Type', 'Mono PERC, half-cut'], ['Each cell', '~0.6–0.7V; current depends on area'], ['Panel', 'Cells are wired in series, Voc 24.5V'], ['In this model', '36 cells, 3 bypass groups. Confirm the real count on the datasheet'], ['Click', 'Click any cell to place/remove a leaf']] },
+  back: { name: 'Backsheet', rows: [['Job', 'Insulation and moisture protection at the back'], ['Colour', 'White; reflects a little light back onto the cells']] },
+  frame: { name: 'Aluminium frame', rows: [['Job', 'Stiffness and mounting holes'], ['Size', '405×775×30 mm'], ['Earthing', 'Bigger systems earth the frame']] },
+  jbox: { name: 'Junction box + bypass diodes', rows: [['Where', 'Back of the panel'], ['Bypass diode', 'If one group is shaded, current flows around that group'], ['Without diodes', 'One shaded cell would throttle the whole panel'], ['Output', 'MC4 + / − cables (probe them with the multimeter)']] },
+  label: { name: 'Label (STC rating)', rows: [['Pmax', '55W'], ['Vmp / Imp', '21V / 2.62A'], ['Voc / Isc', '24.5V / 2.83A'], ['STC', '1000 W/m², cell 25°C. Usually less in real sun'], ['Temp coeff', 'Typical PERC: Voc −0.28%/°C, Pmax −0.37%/°C (check the label)']] },
+};
+
+function cellPoly(g, r, c, off) {
+  const u0 = .04 + .92 * c / COLS + .004, u1 = .04 + .92 * (c + 1) / COLS - .004;
+  const w0 = .07 + .86 * r / ROWS + .006, w1 = .07 + .86 * (r + 1) / ROWS - .006;
+  return [g.at(u0, w0, off), g.at(u1, w0, off), g.at(u1, w1, off), g.at(u0, w1, off)];
+}
+const quad = (g, u0, w0, u1, w1, off) => [g.at(u0, w0, off), g.at(u1, w0, off), g.at(u1, w1, off), g.at(u0, w1, off)].map(p => P(...p));
+
+function pill(x, y, text, part, ax, ay) {
+  const w = text.length * 6.4 + 16;
+  return `<g class="lbl${st.sel === part ? ' sel' : ''}" data-part="${part}">${ax != null ? `<line x1="${ax}" y1="${ay}" x2="${x}" y2="${y}" stroke="#1d1d1b"/><circle cx="${ax}" cy="${ay}" r="2.5" fill="#1d1d1b"/>` : ''}<rect x="${x - w / 2}" y="${y - 10}" width="${w}" height="20" rx="10"/><text x="${x}" y="${y + 3.5}" text-anchor="middle">${text}</text></g>`;
+}
+
+function build(s) {
+  const { g, sun } = s, front = dot(g.n, VIEW) > 0;
+  let o = `<defs><filter id="wob" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="4"/><feDisplacementMap in="SourceGraphic" scale="${st.wob}"/></filter></defs>`;
+
+  let path = '';
+  for (let t = 300; t <= 1140; t += 20) { const sp = sunPos(t); if (sp.alt > 0) path += (path ? ' L' : 'M') + P(...add(g.C, sp.v, 17)).map(n => n.toFixed(1)).join(','); }
+  o += `<path d="${path}" fill="none" stroke="#c9a23a" stroke-dasharray="2 6" stroke-width="1.5"/>`;
+
+  o += `<g filter="url(#wob)">` + box(0, 0, -0.8, 22, 20, 0.8, '#e6dcc6');
+  [['S', 11, 19.2], ['N', 11, 0.8], ['E', 0.9, 10], ['W', 21.1, 10]].forEach(([l, x, y]) => { const [a, b] = P(x, y, 0); o += `<text x="${a}" y="${b + 4}" text-anchor="middle" font-size="13" font-weight="700" fill="${l === 'S' ? '#d6452f' : '#8a8577'}">${l}</text>`; });
+  o += `<path d="M${P(11, 15.5, 0).join(',')} L${P(11, 18, 0).join(',')}" stroke="#d6452f" stroke-width="2"/>`;
+
+  if (st.tank) o += `<g class="part" data-part="tank">` + box(1.5, 15.5, 0, 3.4, 3.4, 4.2, '#2c2c2e') + `</g>`;
+
+  const legs = st.exploded ? [] : [[.08, 0], [.92, 0], [.08, 1], [.92, 1]];
+  const behind = legs.filter(([, w]) => w === 0), ahead = legs.filter(([, w]) => w === 1);
+  const leg = ([u, w]) => { const p = g.at(u, w, -0.25); return line([p[0], p[1], 0], p, 'class="ink" stroke-width="2.5"'); };
+  behind.forEach(l => o += leg(l));
+
+  if (!st.exploded) {
+    const thick = -0.4;
+    o += poly([P(...g.at(0, 1)), P(...g.at(1, 1)), P(...g.at(1, 1, thick)), P(...g.at(0, 1, thick))], '#b7bcc1');
+    o += poly([P(...g.at(1, 0)), P(...g.at(1, 1)), P(...g.at(1, 1, thick)), P(...g.at(1, 0, thick))], '#a3a9ae');
+    o += poly([P(...g.at(0, 0)), P(...g.at(0, 1)), P(...g.at(0, 1, thick)), P(...g.at(0, 0, thick))], '#a3a9ae');
+    if (front) o += panelFront(g, 0, s, true);
+    else o += panelBack(g, thick);
+  } else {
+    const layers = [['frame', -1.6], ['back', 0], ['eva', 1.3], ['cells', 2.6], ['eva', 3.9], ['glass', 5.2]];
+    if (!front) layers.reverse();
+    o += `<g class="part" data-part="jbox">` + poly(quad(g, .42, .1, .58, .3, -2.8), '#2b2b2b') + `</g>`;
+    layers.forEach(([k, off]) => {
+      if (k === 'frame') o += `<g class="part" data-part="frame"><polygon points="${pts(quad(g, 0, 0, 1, 1, off))}" fill="none" stroke="#9aa1a7" stroke-width="7" stroke-linejoin="round"/><polygon points="${pts(quad(g, 0, 0, 1, 1, off))}" fill="none" class="ink"/></g>`;
+      if (k === 'back') o += `<g class="part" data-part="back">` + poly(quad(g, .02, .03, .98, .97, off), '#f3f1ea') + `</g>`;
+      if (k === 'eva') o += `<g class="part" data-part="eva">` + poly(quad(g, .02, .03, .98, .97, off), '#fffbe6', 'fill-opacity=".55"') + `</g>`;
+      if (k === 'cells') o += panelFront(g, off, s, false);
+      if (k === 'glass') o += `<g class="part" data-part="glass">` + poly(quad(g, .02, .03, .98, .97, off), '#cfe6f5', 'fill-opacity=".4"') + `<polygon points="${pts(quad(g, .08, .1, .25, .45, off))}" fill="#fff" opacity=".5"/></g>`;
+    });
+  }
+  ahead.forEach(l => o += leg(l));
+
+  const a = g.at(.5, 1, -0.4), mc = [a[0], a[1], 0], endP = add(mc, [0, 2.2, 0]), endN = add(add(mc, g.e1, 1.8), [0, 2.2, 0]);
+  if (!st.exploded) o += `<g class="part" data-part="jbox">` + line(a, endP, `stroke="${'#d6452f'}" stroke-width="3" fill="none"`) + line(add(a, g.e1, .5), endN, 'stroke="#262624" stroke-width="3"') + `</g>`;
+  o += `<g class="part" data-part="jbox">` + box(endP[0] - 0.25, endP[1], 0, 0.5, 0.9, 0.45, '#d6452f') + box(endN[0] - 0.25, endN[1], 0, 0.5, 0.9, 0.45, '#262624') + `</g>`;
+
+  if (sun.alt > 0) {
+    const sp = P(...add(g.C, sun.v, 17)), c = P(...g.C), k = Math.min(1, sun.alt / (35 * RAD));
+    o += `<line x1="${sp[0]}" y1="${sp[1]}" x2="${c[0]}" y2="${c[1]}" stroke="#e0a72c" stroke-width="1.5" stroke-dasharray="5 5" opacity="${0.4 + 0.6 * s.cos}"/>`;
+    o += `<circle cx="${sp[0]}" cy="${sp[1]}" r="${16 + 6 * k}" fill="${k < .35 ? '#f2a03a' : '#f3c33b'}" class="ink"/>`;
+    for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5, r = 24 + 6 * k; o += `<line x1="${sp[0] + Math.cos(a) * r}" y1="${sp[1] + Math.sin(a) * r}" x2="${sp[0] + Math.cos(a) * (r + 9)}" y2="${sp[1] + Math.sin(a) * (r + 9)}" class="ink"/>`; }
+  } else o += `<text x="800" y="110" font-size="40">☾</text>`;
+  o += `</g>`;
+  const [px, py] = P(endP[0], endP[1] + 0.9, 0.22), [nx, ny] = P(endN[0], endN[1] + 0.9, 0.22);
+  o += `<circle data-anchor="mc4-pos" data-node="mc+" data-label="Panel MC4 +" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="5" fill="transparent" pointer-events="none"/>`
+    + `<circle data-anchor="mc4-neg" data-node="mc-" data-label="Panel MC4 −" cx="${nx.toFixed(1)}" cy="${ny.toFixed(1)}" r="5" fill="transparent" pointer-events="none"/>`;
+
+  const [ax, ay] = P(...g.at(.15, .1, st.exploded ? 2.6 : 0));
+  if (!st.exploded) {
+    o += pill(ax - 40, ay - 50, front ? 'CELLS (click one)' : 'BACKSHEET', front ? 'cells' : 'back', ax, ay);
+    const fr = P(...g.at(1, .5)); o += pill(fr[0] + 70, fr[1] - 20, 'FRAME', 'frame', fr[0], fr[1]);
+    const jb = P(...add(g.at(.5, 1, -0.4), [0, 1.2, -g.at(.5, 1, -0.4)[2] * 0.5])); o += pill(jb[0] - 90, jb[1] + 40, 'MC4 · JUNCTION BOX', 'jbox', jb[0], jb[1]);
+    o += pill(330, 545, 'LABEL: 55W · 21V · 2.62A', 'label');
+  } else {
+    [['glass', 5.2, 'GLASS'], ['eva', 3.9, 'EVA'], ['cells', 2.6, 'CELLS'], ['back', 0, 'BACKSHEET'], ['frame', -1.6, 'FRAME'], ['jbox', -2.8, 'JUNCTION BOX + DIODES']].forEach(([k, off, t], i) => {
+      const [x, y] = P(...g.at(1, .2, off)); o += pill(x + 110, y - 6, t, k, x, y);
+    });
+  }
+  return o;
+}
+
+function panelFront(g, off, s, frame) {
+  let o = '';
+  if (frame) o += `<g class="part" data-part="frame"><polygon points="${pts(quad(g, 0, 0, 1, 1, off))}" fill="#c9ced2" class="ink"/></g>`;
+  const lit = s.G > 0;
+  o += poly(quad(g, .03, .05, .97, .95, off), '#f3f1ea');
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const i = r * COLS + c, sh_ = st.shade[i];
+    const base = c < 3 ? '#2c4a96' : c < 6 ? '#2a4790' : '#2c4a96';
+    const fill = sh_ < 1 ? '#1d2a4d' : lit ? base : '#22345f';
+    o += `<polygon class="cell ink" data-cell="${i}" points="${pts(cellPoly(g, r, c, off).map(p => P(...p)))}" fill="${fill}" stroke-width="1"/>`;
+    if (sh_ === SHADE.leaf) { const [x, y] = P(...g.at(.04 + .92 * (c + .5) / COLS, .07 + .86 * (r + .5) / ROWS, off)); o += `<text x="${x}" y="${y + 5}" text-anchor="middle" font-size="15" pointer-events="none">🍃</text>`; }
+  }
+  if (st.tank) o += `<polygon points="${pts(quad(g, .03, .07 + .86 * 3 / 4, .97, .95, off))}" fill="#000" opacity=".35" pointer-events="none"/>`;
+  if (st.shade[6] === SHADE.cloth) o += `<polygon points="${pts(quad(g, .04 + .92 * 6 / 9, .03, .98, .97, off))}" fill="#d98b8b" opacity=".55" pointer-events="none"/>`;
+  for (let k = 1; k < 3; k++) { const u = .04 + .92 * k * 3 / COLS; o += `<line x1="${P(...g.at(u, .05, off))[0]}" y1="${P(...g.at(u, .05, off))[1]}" x2="${P(...g.at(u, .95, off))[0]}" y2="${P(...g.at(u, .95, off))[1]}" stroke="#f3c33b" stroke-width="1" stroke-dasharray="3 3" pointer-events="none"/>`; }
+  if (lit) o += `<polygon points="${pts(quad(g, .08, .1, .25, .45, off))}" fill="#fff" opacity="${0.12 + 0.3 * s.cos}" pointer-events="none"/>`;
+  return o;
+}
+
+function panelBack(g, off) {
+  let o = `<g class="part" data-part="back">` + poly(quad(g, 0, 0, 1, 1, off), '#9aa1a7') + poly(quad(g, .03, .05, .97, .95, off), '#f3f1ea') + `</g>`;
+  o += `<g class="part" data-part="jbox">` + poly(quad(g, .42, .12, .58, .32, off - 0.01), '#2b2b2b') + `</g>`;
+  o += `<g class="part" data-part="label">` + poly(quad(g, .65, .5, .9, .85, off - 0.01), '#fff') + `</g>`;
+  return o;
+}
+
+function drawIV(s) {
+  const x0 = 44, y0 = 196, w = 330, h = 170, vx = v => x0 + v / 27 * w, iy = i => y0 - i / 3.2 * h, py = p => y0 - p / 60 * h;
+  let o = `<line x1="${x0}" y1="${y0}" x2="${x0 + w}" y2="${y0}" stroke="#1d1d1b"/><line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y0 - h}" stroke="#1d1d1b"/><line x1="${x0 + w}" y1="${y0}" x2="${x0 + w}" y2="${y0 - h}" stroke="#c9a23a"/>`;
+  for (let v = 0; v <= 25; v += 5) o += `<text x="${vx(v)}" y="${y0 + 14}" text-anchor="middle">${v}V</text>`;
+  for (let i = 0; i <= 3; i++) o += `<text x="${x0 - 6}" y="${iy(i) + 3}" text-anchor="end">${i}A</text>`;
+  for (let p = 0; p <= 60; p += 20) o += `<text x="${x0 + w + 4}" y="${py(p) + 3}" fill="#a07c1e">${p}W</text>`;
+  o += `<line x1="${vx(VBAT)}" y1="${y0}" x2="${vx(VBAT)}" y2="${y0 - h}" stroke="#d6452f" stroke-dasharray="3 4"/><text x="${vx(VBAT) + 4}" y="${y0 - h + 10}" fill="#d6452f">battery ~13.2V (PWM)</text>`;
+  const c = s.iv.pts;
+  if (c.length) {
+    o += `<path d="M${c.map(([v, i]) => `${vx(v).toFixed(1)},${iy(i).toFixed(1)}`).join(' L')}" fill="none" stroke="#2c4a96" stroke-width="2.2"/>`;
+    o += `<path d="M${c.map(([v, i]) => `${vx(v).toFixed(1)},${py(v * i).toFixed(1)}`).join(' L')}" fill="none" stroke="#c9a23a" stroke-width="1.6" stroke-dasharray="4 3"/>`;
+    const [mv, mi] = s.iv.mpp, [pv, pi] = s.iv.pwm;
+    o += `<circle cx="${vx(mv)}" cy="${iy(mi)}" r="5" fill="#3fae66" stroke="#1d1d1b"/><text x="${vx(mv) - 6}" y="${iy(mi) - 9}" text-anchor="end">MPPT ${(mv * mi).toFixed(1)}W @ ${mv.toFixed(1)}V</text>`;
+    o += `<circle cx="${vx(pv)}" cy="${iy(pi)}" r="5" fill="#d6452f" stroke="#1d1d1b"/><text x="${vx(pv) - 6}" y="${iy(pi) + 18}" text-anchor="end">PWM ${(pv * pi).toFixed(1)}W</text>`;
+  } else o += `<text x="${x0 + w / 2}" y="${y0 - h / 2}" text-anchor="middle" fill="#8a8577">No sun, zero current</text>`;
+  o += `<text x="${x0}" y="14" fill="#2c4a96">━ current (A)</text><text x="${x0 + 120}" y="14" fill="#a07c1e">┅ power (W)</text>`;
+  $('iv').innerHTML = o;
+}
+
+const dirName = az => { const n = ['South', 'South-West', 'West', 'North-West', 'North', 'North-East', 'East', 'South-East']; return n[((Math.round(az / 45) % 8) + 8) % 8]; };
+const hhmm = t => `${String(Math.floor(t / 60) % 24).padStart(2, '0')}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+
+function log(msg, cls = '') {
+  const el = $('log'), d = document.createElement('div');
+  if (cls) d.className = cls;
+  d.textContent = `[${hhmm(st.t)}] ${msg}`;
+  el.appendChild(d);
+  while (el.children.length > 60) el.firstChild.remove();
+  el.scrollTop = el.scrollHeight;
+}
+
+const CHECK = [
+  ['south', 'Panel facing South, tilt set to 20–25°'],
+  ['voc', 'Measured Voc in good sun (>600 W/m²): 22–24.5V'],
+  ['isc', 'Measured Isc in good sun: ~2–2.8A (haze lowers it; label 2.83A)'],
+  ['cold', 'Measured Voc in cold air (≤10°C) and checked the margin to 25V'],
+  ['leaf', 'Put a leaf on one cell and saw the power drop'],
+  ['compare', 'Compared the tank shadow with the cloth shadow'],
+  ['pwm', 'Measured the PWM vs MPPT difference'],
+  ['best', "Found today's best tilt"],
+  ['expl', 'Looked at the layers in the exploded view'],
+];
+const done = new Set();
+const renderCheck = () => $('check').innerHTML = CHECK.map(([id, t]) => `<li class="${done.has(id) ? 'done' : ''}">${t}</li>`).join('');
+function tick(k) {
+  if (done.has(k)) return;
+  done.add(k);
+  renderCheck();
+}
+
+function select(id) {
+  if (!PARTS[id]) return;
+  st.sel = id;
+  const p = PARTS[id];
+  $('partCard').innerHTML = `<div class="k">${p.name}</div><table>${p.rows.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('')}</table>`;
+  document.querySelectorAll('#chips .chip').forEach(ch => ch.classList.toggle('sel', ch.dataset.part === id));
+  render();
+}
+
+function shadeReport(before) {
+  const s = snapshot(), p = s.iv.mpp[0] * s.iv.mpp[1];
+  if (s.G < 150) return log('The sun is weak right now; the effect of shade is clearer in the daytime.', 'w');
+  log(`Power: ${before.toFixed(1)}W → ${p.toFixed(1)}W (${before > 0 ? Math.round((1 - p / before) * 100) : 0}% lower).`, p < before * 0.8 ? 'w' : '');
+  return p;
+}
+const mppW = () => { const s = snapshot(); return s.iv.mpp[0] * s.iv.mpp[1]; };
+
+const actions = {
+  leaf() {
+    const b = mppW(), free = st.shade.map((v, i) => v === 1 ? i : -1).filter(i => i >= 0);
+    if (!free.length) return;
+    st.shade[free[Math.floor(Math.random() * free.length)]] = SHADE.leaf;
+    log('🍃 A leaf fell on one cell (1/36).');
+    shadeReport(b);
+    if (snapshot().G >= 150) tick('leaf');
+  },
+  tank() {
+    const b = mppW();
+    st.tank = true;
+    for (let c = 0; c < COLS; c++) st.shade[3 * COLS + c] = Math.min(st.shade[3 * COLS + c], SHADE.tank);
+    log('The tank shadow covers the whole bottom row: one cell in each of the three bypass groups.');
+    shadeReport(b); st.seen.add('tank');
+    if (st.seen.has('cloth') && snapshot().G >= 150) tick('compare');
+  },
+  cloth() {
+    const b = mppW();
+    for (let r = 0; r < ROWS; r++) for (let c = 6; c < 9; c++) st.shade[r * COLS + c] = SHADE.cloth;
+    log('The cloth covers one side (one bypass group). Its diode turns on; the other 2 groups work fully.');
+    shadeReport(b); st.seen.add('cloth');
+    if (st.seen.has('tank') && snapshot().G >= 150) tick('compare');
+  },
+  clear() { st.shade.fill(1); st.tank = false; log('All shade removed.'); },
+  voc() { meterTo('V', false, 'VmA'); log('🔧 Meter: V, DC, red in VΩmA, on the open MC4 leads.'); },
+  isc() { meterTo('A', false, '10A'); log('🔧 Meter: A, DC, red in 10A, across the MC4 leads. Panel only, never a battery!'); },
+  pwm() {
+    const s = snapshot(), [v, i] = s.iv.pwm;
+    log(`PWM runs the panel at the battery's ${v}V → ${i.toFixed(2)}A × ${v}V = ${(v * i).toFixed(1)}W`);
+    st.seen.add('pwm'); if (st.seen.has('mppt')) tick('pwm');
+  },
+  mppt() {
+    const s = snapshot(), [v, i] = s.iv.mpp, pw = s.iv.pwm[0] * s.iv.pwm[1];
+    log(`MPPT at the knee: ${v.toFixed(1)}V × ${i.toFixed(2)}A = ${(v * i).toFixed(1)}W. ${pw > 0 ? Math.round((v * i / pw - 1) * 100) : 0}% more than PWM.`);
+    st.seen.add('mppt'); if (st.seen.has('pwm')) tick('pwm');
+  },
+};
+
+function render() {
+  const s = snapshot();
+  $('fig').innerHTML = build(s);
+  drawIV(s);
+  const alt = s.sun.alt / RAD;
+  $('sTime').textContent = hhmm(st.t);
+  $('sSun').textContent = alt > 0 ? `${alt.toFixed(0)}° ${dirName(s.sun.A / RAD)}` : 'night';
+  $('sG').textContent = `${s.G.toFixed(0)} W/m²`;
+  $('sP').textContent = `${(s.iv.mpp[0] * s.iv.mpp[1]).toFixed(0)} / ${(s.iv.pwm[0] * s.iv.pwm[1]).toFixed(0)}W`;
+  $('sVoc').textContent = `${s.iv.voc.toFixed(1)}V · ${s.Tc.toFixed(0)}°C`;
+  $('sVoc').className = s.iv.voc > 25 ? 'bad' : '';
+  $('oTime').textContent = hhmm(st.t); $('oTilt').textContent = st.tilt + '°'; $('oAz').textContent = dirName(st.az);
+  $('oAmb').textContent = st.amb + '°C'; $('oDust').textContent = st.dust + '%'; $('oWob').textContent = st.wob;
+  $('cTime').value = st.t; $('cTilt').value = st.tilt; $('cAz').value = st.az;
+  $('bExpl').classList.toggle('on', st.exploded);
+  if (Math.abs(st.az) <= 10 && st.tilt >= 20 && st.tilt <= 25) tick('south');
+
+  const e = dayEnergy();
+  $('dayCard').innerHTML = `<div class="k">${$('cSeason').selectedOptions[0].text} · ${$('cWx').selectedOptions[0].text}</div><table>`
+    + `<tr><td>On MPPT</td><td>~${e.m.toFixed(0)} Wh/day (${(e.m / 12.8).toFixed(1)}Ah)</td></tr>`
+    + `<tr><td>On PWM</td><td>~${e.p.toFixed(0)} Wh/day (${(e.p / 13.2).toFixed(1)}Ah)</td></tr>`
+    + `<tr><td>Model</td><td>Includes a haze estimate, not wire/controller losses</td></tr><tr><td>Doc budget</td><td>~10–12Ah good sun, 5–7Ah winter/cloudy</td></tr></table>`;
+
+  let h = '', bad = false;
+  if (alt <= 0) h = 'Night. Move the time forward or press ▶.';
+  else if (s.cos === 0) { h = 'The sun is behind the panel! Change the direction or tilt.'; bad = true; }
+  else if (Math.abs(st.az) > 60) { h = `The panel faces ${dirName(st.az)}. In India, South is best.`; bad = true; }
+  else if (st.shade.some(v => v < 1)) h = 'Shade! See the step in the I-V curve: that is where a bypass diode turned on.';
+  else if (s.iv.voc > 25) { h = 'Voc above 25V! A controller with a 25V limit is at risk here.'; bad = true; }
+  else h = 'Change the tilt, direction and time to see how the power changes.';
+  $('hint').textContent = h; $('hint').classList.toggle('bad', bad);
+}
+
+const QUIZ = [
+  ['A leaf covers just 1 of 36 cells. How much power is lost?', ['Only ~3% (1/36)', 'At least ~1/3, because that cell\'s whole group gets bypassed', 'None'], 1, 'In series, the weakest cell sets the current. The bypass diode skips that group, so ~1/3 is lost.'],
+  ['When is a panel\'s Voc highest?', ['Hot afternoon', 'Cold, clear morning', 'Under clouds'], 1, 'Voc drops as temperature rises (~−0.28%/°C). Cold panel = higher Voc. That is why a 25V controller limit is risky.'],
+  ['At ~25°N (North India), which way should a fixed panel face?', ['North', 'East', 'South'], 2, 'The sun stays to the south all year.'],
+  ['In winter (Dec), the best tilt compared to summer is...', ['Steeper (the sun is lower)', 'Flatter', 'The same'], 0, 'In December the sun is low, so a steeper panel (~40°) is best. 20–25° is the all-year compromise.'],
+  ['Why does the tank shadow (whole bottom row) hurt more than the cloth (one side)?', ['The tank is black', 'The row touches all three bypass groups; the cloth only one', 'Cloth lets light through'], 1, 'The shape of the shade matters. One cell covered in every group = the whole panel\'s current drops.'],
+];
+function renderQuiz() {
+  $('quiz').innerHTML = QUIZ.map(([q, opts], i) => `<div class="q"><p>${i + 1}. ${q}</p>${opts.map((o, j) => `<button class="chip" data-q="${i}" data-o="${j}">${o}</button>`).join('')}<div class="ans" id="ans${i}"></div></div>`).join('');
+  $('quiz').querySelectorAll('[data-q]').forEach(b => b.onclick = () => {
+    const [, , right, why] = QUIZ[+b.dataset.q], ok = +b.dataset.o === right;
+    b.classList.add(ok ? 'right' : 'wrong');
+    $('ans' + b.dataset.q).textContent = (ok ? '✓ Right. ' : '✗ No. ') + why;
+  });
+}
+
+function bindUI() {
+  $('fig').addEventListener('click', e => {
+    const cell = e.target.closest('[data-cell]');
+    if (cell) {
+      const i = +cell.dataset.cell, b = mppW();
+      st.shade[i] = st.shade[i] === 1 ? SHADE.leaf : 1;
+      if (st.shade[i] < 1) { log(`🍃 Leaf on cell ${i + 1}.`); shadeReport(b); if (snapshot().G >= 150) tick('leaf'); }
+      return select('cells');
+    }
+    const part = e.target.closest('[data-part]');
+    if (part) select(part.dataset.part);
+  });
+  document.querySelectorAll('[data-menu]').forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const m = $(b.dataset.menu), open = m.classList.contains('open');
+    document.querySelectorAll('.menu').forEach(x => x.classList.remove('open'));
+    m.classList.toggle('open', !open);
+  });
+  document.querySelectorAll('[data-act]').forEach(b => b.onclick = () => { actions[b.dataset.act](); b.closest('.menu').classList.remove('open'); render(); });
+  document.addEventListener('click', () => document.querySelectorAll('.menu').forEach(x => x.classList.remove('open')));
+
+  $('bSouth').onclick = () => { st.az = 0; st.tilt = 25; log('Panel South, tilt 25°. This is the all-year setting from the doc.'); render(); };
+  $('bBest').onclick = () => {
+    let best = [0, 0];
+    for (let t = 0; t <= 70; t += 5) { const e = dayEnergy(t, st.az).m; if (e > best[1]) best = [t, e]; }
+    const now = dayEnergy().m;
+    st.tilt = best[0];
+    log(`Best tilt (${dirName(st.az)}, ${$('cSeason').selectedOptions[0].text}): ${best[0]}° → ~${best[1].toFixed(0)} Wh/day (was ${now.toFixed(0)}).`);
+    tick('best'); render();
+  };
+  $('bExpl').onclick = () => { st.exploded = !st.exploded; if (st.exploded) { tick('expl'); log('Exploded view: glass → EVA → cells → EVA → backsheet → frame, with the junction box at the back.'); } render(); };
+  $('bClean').onclick = () => { const b = mppW(); st.dust = 0; $('cDust').value = 0; log('Panel cleaned with a wet cloth.'); shadeReport(b); render(); };
+
+  const num = (id, key) => $(id).oninput = e => { st[key] = +e.target.value; render(); };
+  num('cTime', 't'); num('cTilt', 'tilt'); num('cAz', 'az'); num('cAmb', 'amb'); num('cDust', 'dust'); num('cWob', 'wob');
+  $('cWx').onchange = e => { st.wx = e.target.value; render(); };
+  $('cSeason').onchange = e => { st.season = e.target.value; log(`Season: ${e.target.selectedOptions[0].text}. The sun path changed.`); render(); };
+  $('cSpeed').onchange = e => { st.speed = +e.target.value; };
+  $('cPlay').onclick = () => { st.playing = !st.playing; $('cPlay').textContent = st.playing ? '❚❚' : '▶'; };
+
+  $('chips').innerHTML = Object.entries(PARTS).map(([id, p]) => `<button class="chip" data-part="${id}">${p.name}</button>`).join('');
+  $('chips').querySelectorAll('.chip').forEach(ch => ch.onclick = () => select(ch.dataset.part));
+}
+
+function meterTo(knob, ac, socket) {
+  Multimeter.set({ knob, ac, socket });
+  Multimeter.attach('red', 'mc4-pos'); Multimeter.attach('black', 'mc4-neg');
+}
+const mcPair = e => (e.redNode === 'mc+' && e.blackNode === 'mc-') || (e.redNode === 'mc-' && e.blackNode === 'mc+');
+Multimeter.setModel({
+  nets: () => {
+    const s = snapshot(), imax = s.iv.isc;
+    return { 'mc+': { v: s.iv.voc || 0.2, g: 'pv', imax }, 'mc-': { v: 0, g: 'pv', imax } };
+  },
+});
+Multimeter.on(e => {
+  if (e.type === 'reading') {
+    log(`📟 ${e.text} (${e.knob}${e.knob === 'V' || e.knob === 'A' ? (e.ac ? ' AC' : ' DC') : ''}) red: ${e.red}, black: ${e.black}`);
+    if (!mcPair(e)) return;
+    const s = snapshot();
+    if (e.knob === 'V' && !e.ac) {
+      const v = Math.abs(e.value), margin = 25 - v;
+      if (s.G < 5) return log('Dark: there is no Voc to speak of. Measure in the sun.');
+      log(`Voc ${v.toFixed(2)}V (cell ${s.Tc.toFixed(0)}°C, label 24.5V @25°C). Margin to a 25V controller limit: ${margin.toFixed(2)}V`, margin < 0.3 ? 'e' : '');
+      if (e.value < 0) log('Minus sign = probes reversed. Red on MC4 +.', 'w');
+      if (s.G > 600 && v >= 20) tick('voc');
+      if (st.amb <= 10) tick('cold');
+    }
+    if (e.knob === 'A' && !e.ac) {
+      log(`Isc ${Math.abs(e.value).toFixed(2)}A (label 2.83A @1000 W/m²). Move the red plug back to VΩmA right away!`, 'w');
+      if (s.G > 600) tick('isc');
+    }
+  }
+  if (e.type === 'short') log(`💥 ~${Math.round(e.amps)}A through the 10A socket. The meter fuse blew.`, 'e');
+  if (e.type === 'fuse-mA') log('💥 mA fuse blown: the panel current went through the VΩmA socket. Current goes through 10A.', 'e');
+});
+
+bindUI(); renderQuiz(); renderCheck();
+log('The panel faces roughly East at only 10° tilt. Press "Set South + 25°" first and see the difference. Press M for the multimeter.');
+render();
+setInterval(() => {
+  if (!st.playing) return;
+  const s = snapshot(), dt = st.speed / 5;
+  st.whM += s.iv.mpp[0] * s.iv.mpp[1] * dt / 60; st.whP += s.iv.pwm[0] * s.iv.pwm[1] * dt / 60;
+  st.t += dt;
+  if (st.t > 1140) { log(`Day over: MPPT ~${st.whM.toFixed(0)}Wh, PWM ~${st.whP.toFixed(0)}Wh.`); st.t = 300; st.whM = st.whP = 0; }
+  render();
+}, 200);
+</script>
+</body>
+</html>

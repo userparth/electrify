@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solar Bench — Fig. 05 Multimeter</title>
+<link rel="stylesheet" href="bench.css">
+<style>
+.stats{grid-template-columns:repeat(4,auto)}
+.stat b{font-size:16px;white-space:nowrap}
+.ctl output{float:right;font-size:11px;font-weight:700}
+.knob,.sock,.func{cursor:pointer}
+.knob:hover text,.sock:hover circle{fill:#f3c33b}
+</style>
+</head>
+<body>
+<div class="app">
+<aside id="side" data-cur="05"></aside>
+<script src="bench.js"></script>
+<script src="kit.js"></script>
+<script src="components/multimeter.js"></script>
+
+<main>
+  <div class="head">
+    <div>
+      <h2>Fig. 05 — Multimeter</h2>
+      <div class="kicker">Themisto TH-M100 · True RMS · 6000 counts · auto range</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Knob · mode</span><b id="sMode">V AC</b></div>
+      <div class="stat"><span>Red probe</span><b id="sRed">VΩmA</b></div>
+      <div class="stat"><span>Target</span><b id="sTgt">Battery</b></div>
+      <div class="stat"><span>Display</span><b id="sDisp">—</b></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="actions">
+      <button class="btn" id="bFunc">FUNC (AC ↔ DC)</button>
+      <button class="btn" id="bRed">Red probe → 10A socket</button>
+      <button class="btn" id="bRev">Swap the probes</button>
+      <div class="row">
+        <button class="btn" data-tgt="batt">Battery</button>
+        <button class="btn" data-tgt="panel">Panel</button>
+        <button class="btn" data-tgt="fuse">Fuse</button>
+        <button class="btn" data-tgt="wire">Wire</button>
+      </div>
+      <div class="dd">
+        <button class="btn warn" data-menu="mOops">Try a mistake ▾</button>
+        <div class="menu" id="mOops">
+          <button data-act="o10A">Measure the battery with red in 10A</button>
+          <button data-act="oMa">Measure panel current via the VΩmA socket</button>
+          <button data-act="oOhm">Measure the battery in Ω mode</button>
+          <button data-act="oBlow">Blow the target fuse</button>
+          <button data-act="oBreak">Break the wire inside</button>
+          <button data-act="oReset">Replace meter fuses, reset all</button>
+        </div>
+      </div>
+      <button class="btn" id="bDrag">🔧 Try with the draggable meter</button>
+      <a class="btn" href="multimeter.html" style="text-decoration:none">Open the full Multimeter lab →</a>
+      <div class="hint" id="hint"></div>
+    </div>
+    <svg id="fig" viewBox="0 20 900 550" aria-label="Isometric multimeter"></svg>
+  </div>
+
+  <div class="controls">
+    <div class="ctl"><span>Sun on panel <output id="oSun"></output></span><input type="range" id="cSun" min="0" max="100" value="90"></div>
+    <div class="ctl"><span>Battery charge <output id="oBv"></output></span><input type="range" id="cBv" min="1180" max="1280" value="1265"></div>
+    <div class="ctl"><span>Knob</span>
+      <select id="cKnob"><option value="off">OFF</option><option value="v" selected>V</option><option value="ohm">Ω</option><option value="cont">••))) continuity</option><option value="a">A</option></select>
+    </div>
+    <div class="ctl"><span>Hand-drawn wobble <output id="oWob"></output></span><input type="range" id="cWob" min="0" max="6" step="0.5" value="2"></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h3>In this figure</h3>
+      <div class="note">A meter only tells the truth when three things are right: the knob, the socket and the probe polarity. Click the knob or sockets directly, change the target, and watch the display. The biggest danger: red probe in the 10A socket, then touching the battery. The 🔧 draggable meter works on these same targets too.</div>
+      <ol class="steps"><li>Black always in COM</li><li>Voltage: red in VΩmA, knob V, FUNC to DC</li><li>Current: red in 10A, knob A, panel only</li><li>Afterwards, red straight back to VΩmA</li></ol>
+      <h3>Selected part</h3>
+      <div class="card" id="partCard"><div class="k">Nothing selected</div>Click any part of the meter or a label.</div>
+      <h3>Meter parts</h3>
+      <div id="chips"></div>
+    </div>
+    <div>
+      <h3>Serial monitor (event log)</h3>
+      <div class="log" id="log"></div>
+      <h3>Check yourself</h3>
+      <div id="quiz"></div>
+      <h3>Practice task</h3>
+      <div class="note" style="margin-bottom:6px">Do these in the figure; each step ticks itself. Use the same order on the real meter.</div>
+      <ul class="check" id="check"></ul>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+const I = iso(15, 440, 190), { P, poly, box, line } = I, S = I.S;
+const st = {
+  knob: 'v', dc: false, red: 'vo', rev: false, tgt: 'batt', sun: 0.9, bv: 12.65, wob: 2,
+  fuseBlown: false, wireBroken: false, f10: true, fma: true, shorted: false, fx: 0, sel: null, iscDone: false,
+};
+const log = makeLog();
+const KNOB = { off: ['OFF', 180], v: ['V', 225], ohm: ['Ω', 270], cont: ['••)))', 315], a: ['A', 0] };
+const TGT = { batt: 'Battery', panel: 'Panel MC4', fuse: 'Fuse', wire: 'Wire' };
+const METER = [3, 6, 0, 7, 1.6, 12], FX = P(METER[0], METER[1] + METER[4], 0);
+// Local face coords → screen, matching iso().faceY on the meter's front.
+const face = (u, v) => [FX[0] + 0.866 * u * S, FX[1] + 0.5 * u * S - v * S];
+const SOCK = { a10: [1.2, 1.3], com: [3.5, 1.3], vo: [5.8, 1.3] };
+const KC = [3.5, 5.2];
+
+const PARTS = {
+  display: { name: 'Display (6000 counts)', rows: [['Max', 'Shows up to 5999'], ['Meaning', '2-decimal battery readings like 12.65V'], ['Why it helps', 'You can clearly tell 75% (12.4V) from 50% (12.2V)'], ['Minus', 'A leading − = probes reversed']] },
+  knob: { name: 'Rotary knob', rows: [['V', 'Voltage (FUNC toggles AC/DC)'], ['Ω', 'Resistance, only on unpowered circuits'], ['••)))', 'Continuity, beep = connected'], ['A', 'Current, with red in the 10A socket']] },
+  func: { name: 'FUNC / Hz button', rows: [['Job', 'Changes the mode at the same knob position'], ['For solar', 'If V shows AC, press FUNC for DC'], ['Remember', 'Battery and panel are both DC']] },
+  a10: { name: '10A socket', rows: [['When', 'Only for measuring current'], ['Inside', '~0 Ω shunt: a direct path between this socket and COM'], ['Danger', 'Across a battery = dead short, whatever the knob says'], ['Doc', 'Section 7: move back to VΩmA right after']] },
+  com: { name: 'COM socket', rows: [['Probe', 'Black, always'], ['Meaning', 'Common / negative reference']] },
+  vo: { name: 'VΩmA socket', rows: [['Probe', 'Red, for voltage / Ω / continuity'], ['mA', 'Small currents, small fuse inside. Never measure the panel ~2.8A here']] },
+  probes: { name: 'Probes', rows: [['Red', 'On +'], ['Black', 'On −'], ['Reversed', 'Voltage just shows a minus, no harm']] },
+  ifuse: { name: 'Fuses inside the meter', rows: [['10A', 'Fuse for big currents (typical)'], ['mA', 'Small fuse on the VΩmA socket'], ['If blown', 'A reads 0. Replace with the same rating only']] },
+};
+
+const ANCH = [
+  ['bat-pos', 'B+', 'Battery +', [16.7, 9.6, 4.4]], ['bat-neg', 'B-', 'Battery −', [19.8, 9.6, 4.4]],
+  ['pv-pos', 'P+', 'Panel MC4 +', [23.5, 5.95, 0.3]], ['pv-neg', 'P-', 'Panel MC4 −', [23.5, 7.05, 0.3]],
+  ['fuse-a', 'F1', 'Fuse leg 1', [24.3, 10.25, 0.15]], ['fuse-b', 'F2', 'Fuse leg 2', [25.3, 10.25, 0.15]],
+  ['wire-a', 'W1', 'Wire end 1', [22.5, 13.5, 0.15]], ['wire-b', 'W2', 'Wire end 2', [28.5, 13.5, 0.15]],
+];
+
+function source() {
+  if (st.tgt === 'batt') return st.bv;
+  if (st.tgt === 'panel') return st.sun > 0.02 ? 21 + 3.5 * Math.min(1, st.sun * 1.3) : 0.3;
+  return 0;
+}
+const live = () => st.tgt === 'batt' || (st.tgt === 'panel' && st.sun > 0.05);
+
+function fmt(v) {
+  const a = Math.abs(v), d = a < 6 ? 3 : a < 60 ? 2 : a < 600 ? 1 : 0;
+  return (v < 0 ? '-' : '') + a.toFixed(d);
+}
+
+function reading() {
+  if (st.shorted) return { main: '----', flag: 'SHORT!', err: true };
+  if (st.knob === 'off') return { main: '', flag: '' };
+  const sgn = st.rev ? -1 : 1, mode = st.dc ? 'DC' : 'AC';
+  if (st.knob === 'v') {
+    if (st.red !== 'vo') return { main: '0.000', flag: `${mode} V`, why: 'Red probe is in the 10A socket, the V input is empty.' };
+    const v = source();
+    if (!st.dc) return { main: v > 0.5 ? '0.02' : '0.000', flag: 'AC V', why: 'The screen says AC. Press FUNC for DC.' };
+    return { main: fmt(sgn * v), flag: 'DC V', val: sgn * v };
+  }
+  if (st.knob === 'a') {
+    if (st.red === 'vo') return { main: '0.000', flag: `${mode} mA`, why: st.fma ? 'Red is in VΩmA. Big currents go through the 10A socket.' : 'The mA fuse is blown.' };
+    if (!st.f10) return { main: '0.000', flag: `${mode} A`, why: 'The 10A fuse is blown.' };
+    const i = st.tgt === 'panel' ? 2.83 * st.sun : 0;
+    if (!st.dc) return { main: i > 0.1 ? '0.01' : '0.000', flag: 'AC A', why: 'AC mode. Press FUNC for DC.' };
+    return { main: fmt(sgn * i), flag: 'DC A', val: sgn * i };
+  }
+  if (st.red !== 'vo') return { main: 'OL', flag: 'Ω', why: 'Ω needs red in VΩmA.' };
+  if (live()) return { main: (Math.random() * 900).toFixed(1), flag: 'Ω ?!', err: true, why: 'Never use Ω on a live source. Useless reading, and it can damage the meter.' };
+  const r = st.tgt === 'fuse' ? (st.fuseBlown ? null : 0.2) : st.tgt === 'wire' ? (st.wireBroken ? null : 0.3) : null;
+  if (r == null) return { main: 'OL', flag: st.knob === 'cont' ? '••))) ' : 'Ω' };
+  return { main: r.toFixed(1), flag: st.knob === 'cont' ? '••))) BEEP' : 'Ω', beep: st.knob === 'cont' };
+}
+
+function evaluate() {
+  if (st.shorted) return;
+  if (st.red === 'a10' && st.tgt === 'batt') {
+    st.shorted = true; st.f10 = false; st.fx = 12; tick('short');
+    log('💥 SHORT! The 10A socket is ~0Ω. One to two hundred amps from the battery flowed through the probes: sparks, melted tips, the meter 10A fuse is gone.', 'e');
+    log('Whatever the knob says, the 10A socket always shorts the battery.', 'w');
+    return;
+  }
+  if (st.knob === 'a' && st.red === 'vo' && live() && st.fma) {
+    st.fma = false; st.fx = 6;
+    log(`💥 mA fuse blown! ${st.tgt === 'panel' ? 'The panel ~2.8A' : 'Battery current'} went through the small mA input.`, 'e');
+  }
+}
+
+function afterReading(r) {
+  if (st.knob === 'v' && st.dc && st.red === 'vo' && r.val != null) {
+    if (st.tgt === 'batt' && r.val > 0) { tick('batt'); if (r.val < 12.2) log('Battery is below 50% (doc table).', 'w'); }
+    if (r.val < 0) tick('rev');
+    if (st.tgt === 'panel' && r.val >= 22 && r.val <= 24.6) tick('voc');
+  }
+  if (st.knob === 'a' && st.dc && st.red === 'a10' && st.tgt === 'panel' && r.val >= 2.3) { tick('isc'); st.iscDone = true; }
+  if (st.knob === 'cont' && st.tgt === 'fuse' && st.fuseBlown && r.main === 'OL') tick('fuse');
+}
+
+function target(o, tgt) { return tgt === st.tgt ? o : `<g opacity=".55">${o}</g>`; }
+
+function scene(r) {
+  let o = wobbleDefs(st.wob) + `<g filter="url(#wob)">` + box(0, 0, -0.8, 30, 16, 0.8, '#e6dcc6');
+
+  let pv = poly([P(15, 0.8, 6.5), P(22, 0.8, 6.5), P(22, 3.6, 2.6), P(15, 3.6, 2.6)], st.sun > 0.05 ? '#2c4a96' : '#24345e');
+  pv = line([15.5, 1, 0], [15.5, 1, 6.2], 'class="ink" stroke-width="2.5"') + line([21.5, 1, 0], [21.5, 1, 6.2], 'class="ink" stroke-width="2.5"') + pv
+    + line([16, 3.6, 2.6], [16, 3.6, 0], 'class="ink"') + line([21, 3.6, 2.6], [21, 3.6, 0], 'class="ink"')
+    + `<path d="${I.path([[18, 3.4, 2.7], [18.4, 5.5, 0.1], [22.5, 6, 0.1]])}" fill="none" stroke="#d6452f" stroke-width="3"/>`
+    + `<path d="${I.path([[19, 3.4, 2.7], [19.4, 6.6, 0.1], [22.5, 7, 0.1]])}" fill="none" stroke="#262624" stroke-width="3"/>`
+    + box(22.4, 5.6, 0, 1.1, 0.7, 0.6, '#3b3b3b') + box(22.4, 6.7, 0, 1.1, 0.7, 0.6, '#3b3b3b');
+  if (st.sun > 0.05) for (let i = 0; i < 8; i++) { const [x, y] = [770, 70], a = i * Math.PI / 4; o += `<line x1="${x + Math.cos(a) * 26}" y1="${y + Math.sin(a) * 26}" x2="${x + Math.cos(a) * 36}" y2="${y + Math.sin(a) * 36}" class="ink" opacity="${st.sun}"/>`; }
+  o += `<circle cx="770" cy="70" r="20" fill="#f3c33b" class="ink" opacity="${0.2 + 0.8 * st.sun}"/>`;
+  o += target(`<g class="part" data-tgt="panel">${pv}</g>`, 'panel');
+
+  let bt = box(15.5, 8.5, 0, 5.5, 3.5, 4, '#2f2f33') + box(16.3, 9.2, 4, 0.8, 0.8, 0.4, '#d6452f') + box(19.4, 9.2, 4, 0.8, 0.8, 0.4, '#222');
+  const [tx, ty] = P(18.2, 12, 2.4);
+  bt += `<text x="${tx}" y="${ty}" font-size="11" font-weight="700" fill="#eee" text-anchor="middle" transform="rotate(30 ${tx} ${ty})">EXIDE 12V</text>`;
+  o += target(`<g class="part" data-tgt="batt">${bt}</g>`, 'batt');
+
+  let fu = box(24, 10, 0, 1.6, 0.5, 1.7, st.fuseBlown ? '#9a9a9a' : '#f0c13a') + box(24.15, 10.1, -0.01, 0.35, 0.3, 0.3, '#ccc') + box(25.1, 10.1, -0.01, 0.35, 0.3, 0.3, '#ccc');
+  const [fx, fy] = P(24.8, 10.5, 1.0);
+  fu += `<text x="${fx}" y="${fy}" font-size="8" font-weight="700" text-anchor="middle" transform="rotate(30 ${fx} ${fy})">${st.fuseBlown ? '✕' : '10'}</text>`;
+  o += target(`<g class="part" data-tgt="fuse">${fu}</g>`, 'fuse');
+
+  let wr = `<path d="${I.path([[23, 13.5, 0.15], [28, 13.5, 0.15]])}" stroke="#d6452f" stroke-width="5" fill="none" stroke-linecap="round"/>`
+    + `<path d="${I.path([[22.4, 13.5, 0.15], [23, 13.5, 0.15]])}" stroke="#c98a3a" stroke-width="2.5"/><path d="${I.path([[28, 13.5, 0.15], [28.6, 13.5, 0.15]])}" stroke="#c98a3a" stroke-width="2.5"/>`;
+  if (st.wireBroken) { const [bx, by] = P(25.5, 13.5, 0.15); wr += `<text x="${bx}" y="${by - 6}" font-size="12" text-anchor="middle">✂</text>`; }
+  o += target(`<g class="part" data-tgt="wire">${wr}</g>`, 'wire');
+
+  o += ANCH.map(([id, node, label, at]) => { const [x, y] = P(...at); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="#f2efe7" stroke="#1d1d1b" stroke-width="1.2" data-anchor="${id}" data-node="${node}" data-label="${label}"/>`; }).join('');
+  o += box(...METER, '#f2b632', 'class="part" data-part="body"');
+  o += `<g transform="${I.faceY(METER[0], METER[1] + METER[4], 0)}">`;
+  o += `<g class="part" data-part="display"><rect x="${0.6 * S}" y="${-11.4 * S}" width="${5.8 * S}" height="${2.9 * S}" rx="4" fill="${r.err ? '#f0a596' : st.knob === 'off' ? '#8d957f' : '#c9d9b4'}" class="ink"/>`
+    + `<text x="${6.1 * S}" y="${-9.4 * S}" text-anchor="end" font-size="24" font-weight="700" font-family="ui-monospace,Menlo,monospace" fill="#1d2a18">${r.main}</text>`
+    + `<text x="${0.9 * S}" y="${-10.6 * S}" font-size="8" font-weight="700" fill="#1d2a18">${r.flag}</text></g>`;
+  o += `<g class="func part" data-part="func" data-func="1"><rect x="${0.7 * S}" y="${-8 * S}" width="${1.7 * S}" height="${0.8 * S}" rx="4" fill="#3a3a3a" class="ink"/><text x="${1.55 * S}" y="${-7.45 * S}" text-anchor="middle" font-size="7" fill="#fff">FUNC</text></g>`;
+  o += `<rect x="${4.6 * S}" y="${-8 * S}" width="${1.7 * S}" height="${0.8 * S}" rx="4" fill="#3a3a3a" class="ink"/><text x="${5.45 * S}" y="${-7.45 * S}" text-anchor="middle" font-size="7" fill="#fff">HOLD</text>`;
+  const [kx, ky] = [KC[0] * S, -KC[1] * S], ka = KNOB[st.knob][1] * RAD;
+  o += `<g class="part" data-part="knob"><circle cx="${kx}" cy="${ky}" r="${1.35 * S}" fill="#2b2b2b" class="ink"/><line x1="${kx}" y1="${ky}" x2="${kx + Math.cos(ka) * 1.2 * S}" y2="${ky + Math.sin(ka) * 1.2 * S}" stroke="#f3c33b" stroke-width="4" stroke-linecap="round"/></g>`;
+  for (const [k, [t, a]] of Object.entries(KNOB)) {
+    const x = kx + Math.cos(a * RAD) * 2.25 * S, y = ky + Math.sin(a * RAD) * 2.25 * S;
+    o += `<g class="knob" data-knob="${k}"><circle cx="${x}" cy="${y}" r="10" fill="${st.knob === k ? '#1d1d1b' : 'transparent'}"/><text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="${t.length > 2 ? 7 : 10}" font-weight="700" fill="${st.knob === k ? '#f3c33b' : '#1d1d1b'}">${t}</text></g>`;
+  }
+  for (const [k, [u, v]] of Object.entries(SOCK)) {
+    const ring = k === 'com' ? '#1d1d1b' : '#d6452f';
+    o += `<g class="sock part" data-sock="${k}" data-part="${k}"><circle cx="${u * S}" cy="${-v * S}" r="9" fill="${ring}" class="ink"/><circle cx="${u * S}" cy="${-v * S}" r="4.5" fill="#111"/>`
+      + `<text x="${u * S}" y="${-v * S + 19}" text-anchor="middle" font-size="7.5" font-weight="700">${k === 'a10' ? '10A' : k === 'com' ? 'COM' : 'VΩmA'}</text></g>`;
+  }
+  o += `</g>`;
+
+  const T = {
+    batt: [P(16.7, 9.6, 4.4), P(19.8, 9.6, 4.4)], panel: [P(23.5, 5.95, 0.3), P(23.5, 7.05, 0.3)],
+    fuse: [P(24.3, 10.25, 0.15), P(25.3, 10.25, 0.15)], wire: [P(22.5, 13.5, 0.15), P(28.5, 13.5, 0.15)],
+  }[st.tgt];
+  const [pPos, pNeg] = st.rev ? [T[1], T[0]] : T;
+  const cable = (from, to, col) => {
+    const mx = (from[0] + to[0]) / 2, my = Math.max(from[1], to[1]) + 70;
+    return `<path d="M${from[0]},${from[1]} C${from[0]},${my} ${mx},${my} ${to[0]},${to[1]}" fill="none" stroke="${col}" stroke-width="3.5" stroke-linecap="round"/><circle cx="${to[0]}" cy="${to[1]}" r="4" fill="${col}" class="ink"/>`;
+  };
+  o += `<g class="part" data-part="probes">` + cable(face(...SOCK.com), pNeg, '#262624') + cable(face(...SOCK[st.red]), pPos, '#d6452f') + `</g>`;
+
+  if (st.fx > 0) {
+    const [sx, sy] = st.shorted ? P(18.2, 9.6, 4.6) : face(...SOCK.vo);
+    for (let i = 0; i < 9; i++) { const a = i * 40 * RAD + st.fx; o += `<line x1="${sx}" y1="${sy}" x2="${sx + Math.cos(a) * (14 + st.fx * 2)}" y2="${sy + Math.sin(a) * (14 + st.fx * 2)}" stroke="#f3a01b" stroke-width="2.5"/>`; }
+    o += `<text x="${sx}" y="${sy - 26}" font-size="22" text-anchor="middle">💥</text>`;
+  }
+  o += `</g>`;
+
+  const lp = (x, y, t, k, a) => pill(x, y, t, k, a[0], a[1], st.sel);
+  o += lp(600, 50, 'DISPLAY (6000 counts)', 'display', face(6, 10));
+  o += lp(300, 390, 'FUNC (AC/DC)', 'func', face(0.8, 7.6));
+  o += lp(300, 425, 'KNOB', 'knob', face(2.3, 5.2));
+  o += lp(300, 470, '10A (current only!)', 'a10', face(1.2, 1.3));
+  o += lp(400, 520, 'COM (black)', 'com', face(3.5, 1.3));
+  o += lp(540, 545, 'VΩmA (red)', 'vo', face(5.8, 1.3));
+  o += pill(780, 470, `TARGET: ${TGT[st.tgt].toUpperCase()}`, 'probes', null, null, st.sel);
+  return o;
+}
+
+const tick = makeChecklist([
+  ['dc', 'Saw AC on V, pressed FUNC for DC'],
+  ['batt', 'Measured the battery DC voltage correctly'],
+  ['rev', 'Swapped the probes and saw the minus sign'],
+  ['voc', 'Measured panel Voc in the sun: 22–24.5V'],
+  ['isc', 'Measured panel Isc via the 10A socket: ~2.5–2.8A'],
+  ['back', 'Moved red back to VΩmA after Isc'],
+  ['fuse', 'Caught a blown fuse with continuity (OL, no beep)'],
+  ['short', 'Saw what the 10A socket mistake does'],
+], () => log('🎉 Fig. 05 practice complete! Do the same on the real meter.'));
+
+const select = makeParts(PARTS, id => { st.sel = id; render(); });
+
+function hint(r) {
+  let h = r.why || '', bad = !!r.err;
+  if (st.shorted) { h = 'Shorted. Use "Replace meter fuses, reset all" to recover.'; bad = true; }
+  else if (!h) {
+    if (st.knob === 'off') h = 'The knob is on OFF. Turn it to V.';
+    else if (st.red === 'a10' && st.knob !== 'a') { h = 'Red is in the 10A socket! Keep it off the battery.'; bad = true; }
+    else if (st.iscDone && st.red === 'a10') { h = 'Isc done. Move red back to VΩmA now!'; bad = true; }
+    else if (r.val < 0) h = 'Minus sign: probes reversed. Red +, black −.';
+    else h = 'Correct setup. Now try another target.';
+  }
+  $('hint').textContent = h; $('hint').classList.toggle('bad', bad);
+}
+
+function render() {
+  evaluate();
+  const r = reading();
+  afterReading(r);
+  $('fig').innerHTML = scene(r);
+  $('sMode').textContent = `${KNOB[st.knob][0]}${st.knob === 'v' || st.knob === 'a' ? (st.dc ? ' DC' : ' AC') : ''}`;
+  $('sRed').textContent = st.red === 'vo' ? 'VΩmA' : '10A'; $('sRed').className = st.red === 'a10' ? 'bad' : '';
+  $('sTgt').textContent = TGT[st.tgt] + (st.rev ? ' (reversed)' : '');
+  $('sDisp').textContent = `${r.main || '—'} ${r.flag && !r.flag.startsWith('••') ? r.flag.replace('DC ', '').replace('AC ', '') : ''}`;
+  $('sDisp').className = r.err ? 'bad' : '';
+  $('bRed').textContent = st.red === 'vo' ? 'Red probe → 10A socket' : 'Red probe → VΩmA socket';
+  $('bRed').classList.toggle('on', st.red === 'a10');
+  $('bRev').classList.toggle('on', st.rev);
+  $('bFunc').textContent = `FUNC (now ${st.dc ? 'DC' : 'AC'})`;
+  document.querySelectorAll('[data-tgt]').forEach(b => b.tagName === 'BUTTON' && b.classList.toggle('on', b.dataset.tgt === st.tgt));
+  $('cKnob').value = st.knob;
+  $('oSun').textContent = Math.round(st.sun * 100) + '%'; $('oBv').textContent = st.bv.toFixed(2) + 'V'; $('oWob').textContent = st.wob;
+  hint(r);
+}
+
+const lastLog = { k: '' };
+function say(r) {
+  const k = `${st.knob}${st.dc}${st.red}${st.rev}${st.tgt}${r.main}`;
+  if (k === lastLog.k || st.shorted) return;
+  lastLog.k = k;
+  if (r.main) log(`${TGT[st.tgt]} · ${KNOB[st.knob][0]} ${st.knob === 'v' || st.knob === 'a' ? (st.dc ? 'DC' : 'AC') : ''} · red ${st.red === 'vo' ? 'VΩmA' : '10A'} → ${r.main} ${r.flag}${r.why ? '  (' + r.why + ')' : ''}`, r.err ? 'e' : r.why ? 'w' : '');
+}
+const act = fn => { fn(); render(); say(reading()); };
+
+function setKnob(k) { st.knob = k; if (k === 'off') st.dc = false; }
+function setRed(s) {
+  st.red = s;
+  if (s === 'vo' && st.iscDone) { tick('back'); log('Red probe back in VΩmA. Well done, make it a habit.'); }
+}
+
+const actions = {
+  o10A() { setKnob('v'); setRed('a10'); st.tgt = 'batt'; },
+  oMa() { setKnob('a'); st.dc = true; setRed('vo'); st.tgt = 'panel'; },
+  oOhm() { setKnob('ohm'); setRed('vo'); st.tgt = 'batt'; },
+  oBlow() { st.fuseBlown = true; st.tgt = 'fuse'; log('Target fuse blown (the strip inside broke). Catch it with continuity.'); },
+  oBreak() { st.wireBroken = true; st.tgt = 'wire'; log('The wire broke inside but looks fine outside. Catch it with continuity.'); },
+  oReset() { Object.assign(st, { shorted: false, f10: true, fma: true, fx: 0, fuseBlown: false, wireBroken: false, red: 'vo', rev: false, knob: 'v', dc: false, tgt: 'batt' }); lastLog.k = ''; log('Both meter fuses replaced, probes fixed. Knob V, red in VΩmA.'); },
+};
+bindMenus(actions, () => { render(); say(reading()); });
+
+Multimeter.setModel({
+  nets: () => {
+    const voc = st.sun > 0.02 ? 21 + 3.5 * Math.min(1, st.sun * 1.3) : 0.3;
+    return { 'B+': { v: st.bv, g: 'bat', imax: 300 }, 'B-': { v: 0, g: 'bat', imax: 300 }, 'P+': { v: voc, g: 'pv', imax: 2.83 * st.sun }, 'P-': { v: 0, g: 'pv', imax: 2.83 * st.sun } };
+  },
+  resistance: (a, b) => { const k = [a, b].sort().join(''); return k === 'F1F2' ? (st.fuseBlown ? Infinity : 0.2) : k === 'W1W2' ? (st.wireBroken ? Infinity : 0.3) : Infinity; },
+});
+Multimeter.on(e => {
+  const pair = (a, b) => (e.redNode === a && e.blackNode === b) || (e.redNode === b && e.blackNode === a);
+  if (e.type === 'reading') {
+    log(`📟 Draggable meter: ${e.text} (${e.knob}${e.knob === 'V' || e.knob === 'A' ? (e.ac ? ' AC' : ' DC') : ''}, ${e.red} / ${e.black})`);
+    if (e.knob === 'V' && !e.ac && pair('B+', 'B-')) { if (e.value > 0) tick('batt'); else tick('rev'); }
+    if (e.knob === 'V' && !e.ac && pair('P+', 'P-') && Math.abs(e.value) >= 22) tick('voc');
+    if (e.knob === 'A' && !e.ac && e.socket === '10A' && pair('P+', 'P-') && Math.abs(e.value) >= 2.3) { tick('isc'); st.iscDone = true; }
+    if (e.knob === 'CONT' && pair('F1', 'F2') && st.fuseBlown && !isFinite(e.value)) tick('fuse');
+  }
+  if (e.type === 'socket' && e.socket === 'VmA' && st.iscDone) tick('back');
+  if (e.type === 'short') { tick('short'); log(`💥 Draggable meter: ~${Math.round(e.amps)}A through the 10A socket. Same lesson, now by hand.`, 'e'); }
+});
+$('bDrag').onclick = () => { const r = $('hint').getBoundingClientRect(); Multimeter.open([r.left + scrollX, r.bottom + scrollY + 16]); window.scrollTo({ top: r.bottom + scrollY - 140, behavior: 'smooth' }); log('Draggable meter open: drag the probe tips onto the dots on the battery, panel MC4, fuse or wire.'); };
+
+$('bFunc').onclick = () => act(() => {
+  if (st.knob !== 'v' && st.knob !== 'a') return log('FUNC only toggles AC/DC on V and A.');
+  st.dc = !st.dc; if (st.dc && st.knob === 'v') tick('dc');
+});
+$('bRed').onclick = () => act(() => setRed(st.red === 'vo' ? 'a10' : 'vo'));
+$('bRev').onclick = () => act(() => { st.rev = !st.rev; });
+document.querySelectorAll('button[data-tgt]').forEach(b => b.onclick = () => act(() => { st.tgt = b.dataset.tgt; }));
+
+bindFigClicks($('fig'), select, e => {
+  const k = e.target.closest('[data-knob]'), s = e.target.closest('[data-sock]'), f = e.target.closest('[data-func]'), t = e.target.closest('[data-tgt]');
+  if (k) { act(() => setKnob(k.dataset.knob)); return true; }
+  if (f) { $('bFunc').click(); return true; }
+  if (s) {
+    const id = s.dataset.sock;
+    if (id === 'com') { select('com'); log('The black probe always stays in COM.'); return true; }
+    act(() => setRed(id)); select(id); return true;
+  }
+  if (t) { act(() => { st.tgt = t.dataset.tgt; }); return true; }
+  return false;
+});
+
+$('cKnob').onchange = e => act(() => setKnob(e.target.value));
+$('cSun').oninput = e => { st.sun = e.target.value / 100; render(); };
+$('cSun').onchange = () => say(reading());
+$('cBv').oninput = e => { st.bv = e.target.value / 100; render(); };
+$('cBv').onchange = () => say(reading());
+$('cWob').oninput = e => { st.wob = +e.target.value; render(); };
+
+renderQuiz([
+  ['Knob on V, red probe in the 10A socket, touched to the battery. What happens?', ['Shows 0V, nothing else', 'Dead short: whatever the knob, the 10A socket is ~0Ω inside', 'Correct voltage'], 1, 'The knob only changes the display mode. There is always a shunt between the 10A socket and COM.'],
+  ['The battery reads −12.58. Meaning?', ['Battery is bad', 'Probes are reversed', 'Meter is on AC'], 1, 'Red +, black −. Reversed does no harm, it just shows a minus.'],
+  ['The battery reads 0.02 and the screen says "AC". What do you do?', ['Press FUNC for DC', 'Replace the battery', 'Turn the knob to A'], 0, 'Battery and panel are DC. On the TH-M100 the V position switches to DC with FUNC.'],
+  ['How do you measure panel Isc?', ['Red in VΩmA, knob A', 'Red in 10A, knob A, straight across the panel MC4 + and −', 'In series with the battery'], 1, 'The panel short-circuit current is only ~2.8A, so this is safe. Never with the battery.'],
+  ['A fuse looks fine from outside. How do you make sure?', ['Continuity: beep = good, OL = blown', 'Measure in V mode', 'Via the 10A socket'], 0, 'Use Ω / continuity on unpowered parts. A blown fuse shows OL.'],
+]);
+
+log('The meter is on V and the screen shows AC (just like the doc says). Press FUNC first.');
+render();
+setInterval(() => { if (st.fx > 0) { st.fx--; render(); } }, 120);
+</script>
+</body>
+</html>

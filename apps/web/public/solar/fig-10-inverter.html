@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solar Bench — Fig. 10 Inverter</title>
+<link rel="stylesheet" href="bench.css">
+<style>
+.stats{grid-template-columns:repeat(5,auto)}
+.stat b{font-size:16px;white-space:nowrap}
+.ctl output{float:right;font-size:11px;font-weight:700}
+.controls{row-gap:14px}
+.smoke{animation:smoke 1.6s ease-out infinite}
+@keyframes smoke{from{opacity:.8;transform:translateY(0)}to{opacity:0;transform:translateY(-30px)}}
+.hot{animation:hot .5s ease-in-out infinite alternate}
+@keyframes hot{to{stroke:#ffb347}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside id="side" data-cur="10"></aside>
+<script src="bench.js"></script>
+<script src="kit.js"></script>
+<script src="components/multimeter.js"></script>
+
+<main>
+  <div class="head">
+    <div>
+      <h2>Fig. 10 — Inverter</h2>
+      <div class="kicker">300W pure sine · straight from the battery · 30–40A fuse · 6 sq mm</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Battery</span><b id="sBatt">—</b></div>
+      <div class="stat"><span>AC load</span><b id="sW">—</b></div>
+      <div class="stat"><span>Battery current</span><b id="sA">—</b></div>
+      <div class="stat"><span>Until 50%</span><b id="sRun">—</b></div>
+      <div class="stat"><span>Status</span><b id="sStatus">—</b></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="actions">
+      <button class="btn" id="bInv">Turn inverter ON</button>
+      <div class="row">
+        <button class="btn" data-app="fan">Fan 50W</button>
+        <button class="btn" data-app="laptop">Laptop 60W</button>
+      </div>
+      <div class="row">
+        <button class="btn" data-app="router">Router 8W</button>
+        <button class="btn" data-app="led">LED 9W</button>
+      </div>
+      <div class="dd">
+        <button class="btn" data-menu="mHeavy">Plug in something heavy ▾</button>
+        <div class="menu" id="mHeavy">
+          <button data-act="h_fridge">Fridge (150W, surge at start)</button>
+          <button data-act="h_iron">Press / iron (1000W)</button>
+          <button data-act="h_kettle">Kettle (1500W)</button>
+          <button data-act="h_mixer">Mixer (500W)</button>
+          <button data-act="h_cooler">Cooler (180W motor)</button>
+          <button data-act="h_motor">Water pump (0.5 HP)</button>
+          <button data-act="h_none">Remove the heavy load</button>
+        </div>
+      </div>
+      <button class="btn" id="bWave">Waveform: pure sine</button>
+      <div class="dd">
+        <button class="btn warn" data-menu="mOops">Make a mistake ▾</button>
+        <div class="menu" id="mOops">
+          <button data-act="oLoad">Wire the inverter to the controller LOAD</button>
+          <button data-act="oThin">Use thin wire (1.5 sq mm)</button>
+          <button data-act="oNoFuse">Remove the fuse</button>
+          <button data-act="oShort">Spanner drops: + and − shorted</button>
+          <button data-act="oNoLvd">Turn off low-voltage cutoff</button>
+          <button data-act="oFix">Fix everything</button>
+        </div>
+      </div>
+      <div class="hint" id="hint"></div>
+    </div>
+    <svg id="fig" viewBox="0 20 900 600" aria-label="Inverter connected to battery with AC appliances"></svg>
+  </div>
+
+  <div class="controls">
+    <div class="ctl"><span>Low-voltage cutoff <output id="oLvd"></output></span><input type="range" id="cLvd" min="11.8" max="12.0" step="0.05" value="11.9"></div>
+    <div class="ctl"><span>Idle draw (typical) <output id="oIdle"></output></span><input type="range" id="cIdle" min="4" max="7" step="0.5" value="5"></div>
+    <div class="ctl"><span>Play · speed <output id="oTime"></output></span>
+      <button class="btn" id="cPlay" style="padding:1px 10px">▶</button>
+      <select id="cSpeed"><option value="2">1x</option><option value="10" selected>5x</option><option value="40">20x</option></select>
+      <button class="btn" id="cCharge" style="padding:1px 10px">Battery full</button>
+    </div>
+    <div class="ctl"><span>Hand-drawn wobble <output id="oWob"></output></span><input type="range" id="cWob" min="0" max="6" step="0.5" value="2"></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h3>In this figure</h3>
+      <div class="note">The inverter turns the battery's 12V DC into 230V AC. It connects <b>straight to the battery</b> with thick wire and a 30–40A fuse, not to the controller LOAD. Every AC watt pulls more than ~1/12 A from the battery, and an idle inverter still eats 4–7W. Open the 🔧 multimeter to probe the battery, fuse, inverter input and the AC socket.</div>
+      <h3>Selected part</h3>
+      <div class="card" id="partCard"><div class="k">Nothing selected</div>Click any part or label in the figure.</div>
+      <h3>Parts in this setup</h3>
+      <div id="chips"></div>
+      <h3>How long it runs (26Ah, night)</h3>
+      <div class="card" id="runCard"></div>
+    </div>
+    <div>
+      <h3>Serial monitor (event log)</h3>
+      <div class="log" id="log"></div>
+      <h3>Check yourself</h3>
+      <div id="quiz"></div>
+      <h3>Practice task</h3>
+      <div class="note" style="margin-bottom:6px">Try these in the figure. Each step ticks itself.</div>
+      <ul class="check" id="check"></ul>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+const K = iso(15, 360, 210), { P, pts, poly, box, line, path, faceY } = K;
+const CAP = 26, RATED = 300, PEAK = 600, EFF = 0.88, RHO = 0.0172, LEN = 2;
+const APPS = {
+  fan: { name: '230V table fan', w: 50, icon: '🌀', at: [27, 1.5] },
+  laptop: { name: 'Laptop charger', w: 60, icon: '💻', at: [31, 3] },
+  router: { name: 'WiFi router (AC adapter)', w: 8, icon: '📶', at: [27, 7] },
+  led: { name: '9W LED bulb', w: 9, icon: '💡', at: [31, 8.5] },
+};
+const HEAVY = {
+  fridge: { name: 'Fridge', w: 150, surge: 7, icon: '🧊' },
+  iron: { name: 'Press / iron', w: 1000, surge: 1, icon: '🔥' },
+  kettle: { name: 'Kettle', w: 1500, surge: 1, icon: '🫖' },
+  mixer: { name: 'Mixer', w: 500, surge: 3, icon: '🌪' },
+  cooler: { name: 'Cooler', w: 180, surge: 4, icon: '❄' },
+  motor: { name: 'Water pump 0.5HP', w: 370, surge: 5, icon: '⚙' },
+};
+
+const st = {
+  on: false, apps: new Set(), heavy: null, wave: 'pure', wiring: 'batt', thin: false, fuse: true,
+  blown: false, burnt: false, ctrlOL: false, trip: null, lvdOn: true, lvd: 11.9, idle: 5, ah: CAP,
+  t: 19 * 60, playing: false, speed: 10, wob: 2, sel: null, lvdCut: false, hotLogged: false, deep: false,
+};
+const log = makeLog(() => hhmm(st.t));
+
+const vrest = soc => {
+  const T = [[0, 11.5], [.25, 11.9], [.5, 12.2], [.75, 12.4], [1, 12.7]];
+  for (let i = 1; i < T.length; i++) if (soc <= T[i][0]) { const [a, va] = T[i - 1], [b, vb] = T[i]; return va + (vb - va) * (soc - a) / (b - a); }
+  return 12.7;
+};
+const wireR = () => RHO * LEN / (st.thin ? 1.5 : 6);
+
+function calc() {
+  const soc = Math.max(0, st.ah / CAP);
+  const running = st.on && !st.blown && !st.burnt && !st.ctrlOL && !st.trip && !st.lvdCut;
+  const acW = running ? [...st.apps].reduce((s, k) => s + APPS[k].w, 0) : 0;
+  const dcW = running ? acW / (st.wave === 'pure' ? EFF : 0.9) + st.idle : 0;
+  const v0 = vrest(soc);
+  const I = dcW / v0;
+  const vBatt = v0 - 0.035 * I, vInv = vBatt - I * wireR();
+  const heat = I * I * wireR();
+  const cutV = st.lvdOn ? st.lvd : 10.5;
+  const runH = I > 0 ? Math.max(0, (soc - 0.5) * CAP / I) : Infinity;
+  return { soc, running, acW, dcW, I, vBatt, vInv, heat, runH, cutV };
+}
+
+function hoursFor(w) { const I = (w / EFF + st.idle) / 12.4; return 13 / I; }
+
+function status(c) {
+  if (st.burnt) return ['WIRE BURNT!', true];
+  if (st.blown) return ['FUSE BLOWN', true];
+  if (st.ctrlOL) return ['CONTROLLER OL', true];
+  if (st.trip) return [st.trip, true];
+  if (st.lvdCut) return ['LOW BATT CUT', true];
+  if (!st.on) return ['OFF', false];
+  if (st.thin && c.heat > 2) return ['WIRE HOT', true];
+  return [c.acW ? 'RUNNING' : 'IDLE', false];
+}
+
+function tryHeavy() {
+  const h = HEAVY[st.heavy];
+  if (!h || !st.on || st.trip || st.blown || st.burnt || st.ctrlOL) return;
+  const peak = h.w * h.surge, run = h.w + [...st.apps].reduce((s, k) => s + APPS[k].w, 0);
+  if (run > RATED) { st.trip = 'OVERLOAD'; log(`${h.name} ${h.w}W + the rest = ${run}W > ${RATED}W. The inverter beeps and shuts down.`, 'e'); }
+  else if (peak > PEAK) { st.trip = 'SURGE TRIP'; log(`${h.name} pulls a ~${peak}W surge at start (~${h.surge}× its ${h.w}W running power). Above the ${PEAK}W peak → trip.`, 'e'); }
+  tick('heavy');
+}
+
+const RED = '#d6452f', BLK = '#262624';
+const dot = (id, node, label, x, y) => `<circle data-anchor="${id}" data-node="${node}" data-label="${label}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="#f2efe7" stroke="#1d1d1b" stroke-width="1.3"/>`;
+const at3 = (id, node, label, p) => { const [x, y] = P(...p); return dot(id, node, label, x, y); };
+function cable(p, c, live, w, extraCls = '') {
+  return `<path class="wire ${extraCls}" stroke="${c}" stroke-width="${w}" d="${path(p)}"/><path class="flow${live ? ' live' : ''}" d="${path(p)}"/>`;
+}
+
+function build(c) {
+  const live = c.running && c.I > 0.05, cw = st.thin ? 2.4 : 6, hot = st.thin && c.heat > 2 || st.burnt;
+  let o = wobbleDefs(st.wob) + `<g filter="url(#wob)">` + box(0, 0, -0.8, 36, 18, 0.8, '#e6dcc6'), anchors = '';
+
+  o += box(2, 1, 0, 8, 1, 13, '#c9a77a');
+  o += `<g class="part" data-part="ctrl">` + box(3, 2, 6, 6, 2, 6, '#3a4256');
+  const lcd = st.ctrlOL ? '#f0a596' : '#b9dca0';
+  o += `<g transform="${faceY(3, 4, 6)}"><rect x="${0.8 * K.S}" y="${-5.4 * K.S}" width="${4.4 * K.S}" height="${2.4 * K.S}" rx="3" fill="${lcd}" class="ink"/><text x="${3 * K.S}" y="${-3.9 * K.S}" text-anchor="middle" font-size="13" font-weight="700" fill="#1d2a18">${st.ctrlOL ? 'OL / ERR' : c.vBatt.toFixed(1) + 'V'}</text>`;
+  [0.8, 1.6, 2.6, 3.4, 4.4, 5.2].forEach((u, i) => o += `<rect x="${u * K.S - 5}" y="${-1.4 * K.S}" width="10" height="10" fill="${i % 2 ? '#222' : '#c84030'}" class="ink"/>`);
+  o += `<text x="${4.8 * K.S}" y="${-1.8 * K.S}" text-anchor="middle" font-size="9" fill="#e9e4d6">💡LOAD</text></g></g>`;
+  anchors += `<g transform="${faceY(3, 4, 6)}">${dot('ctl-load-pos', 'load+', 'Controller LOAD +', 4.4 * K.S, -1.4 * K.S + 5)}${dot('ctl-load-neg', 'neg', 'Controller LOAD −', 5.2 * K.S, -1.4 * K.S + 5)}</g>`;
+  if (st.ctrlOL) { const [x, y] = P(6, 3, 12.5); for (let i = 0; i < 3; i++) o += `<circle class="smoke" style="animation-delay:${i * .5}s" cx="${x + (i - 1) * 10}" cy="${y}" r="${7 + i * 2}" fill="#8a8577" opacity=".6"/>`; }
+
+  o += line([5.6, 4, 7.4], [5.6, 4.6, 7.4], `stroke="${RED}" stroke-width="2.4"`) + `<path class="wire" stroke="${RED}" stroke-width="2.4" d="${path([[5.6, 4.6, 7.4], [5.5, 8.6, 6.2], [5.5, 9.6, 5.7]])}"/>`;
+  o += `<path class="wire" stroke="${BLK}" stroke-width="2.4" d="${path([[6.4, 4, 7.4], [6.4, 4.6, 7.4], [9.5, 8.6, 6.2], [9.5, 9.6, 5.7]])}"/>`;
+
+  const bcol = c.soc < 0.45 ? '#5a3a3a' : '#2f2f33';
+  o += `<g class="part" data-part="batt">` + box(4, 8, 0, 7, 4.5, 5.5, bcol);
+  o += `<g transform="${faceY(4, 12.5, 0)}"><text x="${3.5 * K.S}" y="${-3.4 * K.S}" text-anchor="middle" font-size="12" font-weight="700" fill="#eee">EXIDE 26Ah</text><rect x="${0.8 * K.S}" y="${-1.6 * K.S}" width="${5.4 * K.S}" height="7" fill="none" stroke="#ddd"/><rect x="${0.8 * K.S}" y="${-1.6 * K.S}" width="${5.4 * K.S * c.soc}" height="7" fill="${c.soc < 0.5 ? '#f6c56b' : '#9be3b4'}"/></g>`;
+  o += box(5, 9, 5.5, 1, 1, 0.4, RED) + box(9, 9, 5.5, 1, 1, 0.4, '#222') + `</g>`;
+  anchors += at3('bat-pos', 'bat+', 'Battery +', [5.5, 9.5, 5.9]) + at3('bat-neg', 'neg', 'Battery −', [9.5, 9.5, 5.9]);
+
+  const pPath = st.wiring === 'batt' ? [[5.5, 9.5, 5.9], [7, 7.5, 7], [12.5, 7.6, 4.4], [16, 8.2, 3.3]] : [[7.6, 4, 7.4], [7.6, 4.8, 7.4], [12, 6.2, 4.4], [16, 8.2, 3.3]];
+  const nPath = st.wiring === 'batt' ? [[9.5, 9.5, 5.9], [12.5, 9.8, 4.4], [16, 9.8, 3.3]] : [[8.4, 4, 7.4], [8.4, 5.2, 7.4], [12.8, 7, 4.4], [16, 9.8, 3.3]];
+  const pc = st.burnt ? '#ff6a3d' : RED;
+  o += cable(pPath, pc, live, cw, hot ? 'hot' : '') + cable(nPath, BLK, live, cw, hot ? 'hot' : '');
+  if (st.wiring === 'batt') {
+    const fp = P(9.5, 7.55, 5.9);
+    o += `<g class="part" data-part="fuse" transform="translate(${fp[0].toFixed(1)},${fp[1].toFixed(1)}) rotate(-28)"><rect x="-15" y="-7" width="30" height="14" rx="3" fill="${!st.fuse ? 'none' : st.blown ? '#9a9a9a' : '#4f7fd6'}" stroke-dasharray="${st.fuse ? '' : '3 3'}" class="ink${st.fuse ? '' : ' off'}"/><text y="4" text-anchor="middle" font-size="8" font-weight="700" fill="#fff">${!st.fuse ? '' : st.blown ? '✕' : '40A'}</text></g>`;
+    anchors += `<g transform="translate(${fp[0].toFixed(1)},${fp[1].toFixed(1)}) rotate(-28)">${dot('fuse-in', 'bat+', 'Fuse, battery side', -17, 0)}${dot('fuse-out', 'inv+', 'Fuse, inverter side', 17, 0)}</g>`;
+  }
+  if (st.burnt) { const [x, y] = P(11, 7.6, 5); for (let i = 0; i < 4; i++) o += `<circle class="smoke" style="animation-delay:${i * .4}s" cx="${x + (i - 1.5) * 12}" cy="${y}" r="${8 + i * 2}" fill="#6d6a62" opacity=".6"/>`; }
+
+  o += `<g class="part" data-part="inv">` + box(15, 7, 0, 8, 4, 3.2, '#c8ccd0');
+  o += `<g transform="${faceY(15, 11, 0)}"><rect x="${0.6 * K.S}" y="${-2.6 * K.S}" width="${2.2 * K.S}" height="${1.4 * K.S}" rx="2" fill="${c.running ? '#b9dca0' : st.trip ? '#f0a596' : '#7d8573'}" class="ink"/><text x="${1.7 * K.S}" y="${-1.7 * K.S}" text-anchor="middle" font-size="9" font-weight="700">${c.running ? c.acW + 'W' : st.trip ? 'ERR' : ''}</text>`;
+  [4, 6].forEach(u => o += `<rect x="${u * K.S - 13}" y="${-2.5 * K.S}" width="26" height="22" rx="4" fill="#f4f2ec" class="ink"/><circle cx="${u * K.S - 5}" cy="${-2.5 * K.S + 8}" r="2" fill="#333"/><circle cx="${u * K.S + 5}" cy="${-2.5 * K.S + 8}" r="2" fill="#333"/><circle cx="${u * K.S}" cy="${-2.5 * K.S + 15}" r="2.4" fill="#333"/>`);
+  o += `<circle cx="${7.5 * K.S}" cy="${-2 * K.S}" r="4" fill="${c.running ? '#3fae66' : st.trip ? RED : '#777'}" class="ink"/></g>`;
+  o += box(15.6, 7.8, 3.2, 0.8, 0.8, 0.3, RED) + box(15.6, 9.4, 3.2, 0.8, 0.8, 0.3, '#222');
+  anchors += at3('inv-pos', 'inv+', 'Inverter DC +', [16, 8.2, 3.5]) + at3('inv-neg', 'neg', 'Inverter DC −', [16, 9.8, 3.5]);
+  anchors += `<g transform="${faceY(15, 11, 0)}">${dot('ac-l', 'L', 'AC socket Live (L)', 4 * K.S - 5, -2.5 * K.S + 8)}${dot('ac-n', 'N', 'AC socket Neutral (N)', 4 * K.S + 5, -2.5 * K.S + 8)}</g>`;
+  for (let i = 0; i < 4; i++) o += line([18 + i * 0.8, 7.5, 3.21], [18 + i * 0.8, 10.5, 3.21], 'stroke="#777" stroke-width="1.2"');
+  o += `</g>`;
+
+  const sock = [21, 11, 1.6];
+  Object.entries(APPS).forEach(([k, a]) => {
+    const on = st.apps.has(k), pw = on && c.running;
+    o += `<path class="wire${on ? '' : ' off'}" stroke="#4a4a4a" stroke-width="2" d="${path([sock, [sock[0], 12.5, 0], [a.at[0] + 1.2, 12.5, 0], [a.at[0] + 1.2, a.at[1] + 2.5, 0.4]])}"/>`;
+    o += `<g class="part" data-part="${k}">` + box(a.at[0], a.at[1], 0, 2.6, 2.6, 0.4, pw ? '#f3e2a8' : on ? '#e9e4d6' : '#d8d2c4');
+    const [x, y] = P(a.at[0] + 1.3, a.at[1] + 1.3, 1.6);
+    o += `<text x="${x}" y="${y}" text-anchor="middle" font-size="26" opacity="${pw ? 1 : 0.35}">${a.icon}</text></g>`;
+  });
+  if (st.heavy) {
+    const h = HEAVY[st.heavy];
+    o += `<path class="wire" stroke="#4a4a4a" stroke-width="2" d="${path([sock, [sock[0], 14.5, 0], [24, 14.5, 0.4]])}"/>`;
+    o += `<g class="part" data-part="heavy">` + box(24, 13, 0, 3, 3, 0.4, '#e3c1bb');
+    const [x, y] = P(25.5, 14.5, 1.8);
+    o += `<text x="${x}" y="${y}" text-anchor="middle" font-size="30">${h.icon}</text><text x="${x + 16}" y="${y - 14}" font-size="22" font-weight="700" fill="${RED}">✕</text></g>`;
+  }
+  o += `</g>`;
+
+  o += anchors;
+  const wx = 700, wy = 52, ww = 180, wh = 70;
+  o += `<g><rect x="${wx}" y="${wy}" width="${ww}" height="${wh}" rx="10" fill="#1f2a27"/><line x1="${wx + 8}" y1="${wy + wh / 2}" x2="${wx + ww - 8}" y2="${wy + wh / 2}" stroke="#3d4b47"/>`;
+  let d = '';
+  for (let i = 0; i <= 160; i++) {
+    const x = wx + 10 + i, ph = i / 160 * 4 * Math.PI;
+    let y = Math.sin(ph);
+    if (st.wave === 'mod') { const s = Math.sin(ph); y = Math.abs(s) > 0.5 ? Math.sign(s) : 0; }
+    d += (i ? 'L' : 'M') + x + ',' + (wy + wh / 2 - y * (wh / 2 - 12)).toFixed(1);
+  }
+  o += `<path d="${d}" fill="none" stroke="${c.running ? '#9be3b4' : '#55665f'}" stroke-width="2"/><text x="${wx + 10}" y="${wy + 14}" font-size="10" fill="#9be3b4">${st.wave === 'pure' ? 'PURE SINE 230V' : 'MODIFIED SINE'}</text></g>`;
+
+  const L = [['batt', [4, 12.5, 4], [-80, 50], 'BATTERY 12V 26Ah'], ['inv', [19, 7, 3.2], [40, -80], 'INVERTER 300W'], ['ctrl', [3, 2, 12], [-40, -30], 'CONTROLLER 10A']];
+  if (st.wiring === 'batt') L.push(['fuse', [9.5, 7.55, 5.9], [-110, -10], st.fuse ? 'FUSE 30–40A' : 'NO FUSE!']);
+  L.push(['cable', [13.5, 9.8, 4], [-150, 70], st.thin ? 'WIRE 1.5 sq mm (thin)' : 'WIRE 6 sq mm']);
+  if (st.heavy) L.push(['heavy', [25.5, 16, 0.4], [40, 40], HEAVY[st.heavy].name.toUpperCase() + ' ✕']);
+  L.forEach(([id, at, off, t]) => { const [ax, ay] = P(...at); o += pill(ax + off[0], ay + off[1], t, id, ax, ay, st.sel); });
+  return o;
+}
+
+const PARTS = {
+  inv: { name: 'Inverter 300W pure sine', rows: [['Price', '₹2,000–4,000'], ['Rated / peak', `${RATED}W / ~${PEAK}W (typical, check your model)`], ['Efficiency', '~85–90% (typical)'], ['Idle draw', '4–7W, switch it off when not in use'], ['LVD', 'Buy one with adjustable 11.8–12V cutoff, or add an LVD module']] },
+  batt: { name: 'Battery 12V 26Ah', rows: [['Usable', '~13Ah (50%) per day'], ['Inverter', 'Straight from the battery terminals'], ['Rule', 'Never below 12.2V (~50%)']] },
+  fuse: { name: 'Fuse 30–40A', rows: [['Where', 'Near battery +, on the inverter cable'], ['Why', '300W ÷ 12V ÷ 0.88 ≈ 28A at full load. Fuse a bit above that'], ['Job', 'On a short, the fuse blows before the cable burns']] },
+  cable: { name: 'Inverter cable', rows: [['Size', '6 sq mm copper, red + black, keep it short'], ['Why', 'At 28A, 1.5 sq mm gets hot and drops voltage'], ['Lugs', 'Crimped ring lugs on both ends']] },
+  ctrl: { name: 'Charge controller 10A', rows: [['LOAD terminal', 'Max ~10A. For the fan / router'], ['Inverter', 'NOT on LOAD: an inverter pulls up to 28A plus inrush'], ['Job', 'Keeps charging the battery from the panel']] },
+  fan: { name: '230V table fan', rows: [['Power', '~50W'], ['On 26Ah', '~2.5 hr (plan)'], ['Modified sine', 'Humming noise, motor runs hot']] },
+  laptop: { name: 'Laptop charger', rows: [['Power', '~60W'], ['On 26Ah', '~1 full charge (plan)']] },
+  router: { name: 'Router (on its AC adapter)', rows: [['Power', '~8W with the adapter'], ['On 26Ah', '~10 hr (plan)'], ['Better', 'Run it on DC-DC directly (Fig. 07) and save the inverter idle']] },
+  led: { name: '9W LED bulb', rows: [['On 26Ah', '~10–12 hr (plan)']] },
+  heavy: { name: 'Will not run', rows: [['List', 'Fridge, iron, kettle, mixer, cooler, AC, motor'], ['Why', 'Either above 300W, or a motor surge of 3–8× at start'], ['Also', 'A 26Ah battery would be empty in minutes']] },
+};
+const select = makeParts(PARTS, id => { st.sel = id; render(); });
+
+const tick = makeChecklist([
+  ['wired', 'Run the inverter straight from the battery (6 sq mm + 30–40A fuse)'],
+  ['idle', 'See the idle draw with no load'],
+  ['fan', 'Run the 230V fan and check the runtime (~2.5 hr)'],
+  ['laptop', 'Run the laptop and router together'],
+  ['heavy', 'Try something that will not run and watch it trip'],
+  ['load', 'See the mistake of wiring it to the controller LOAD'],
+  ['wire', 'Watch a thin wire heat up'],
+  ['lvd', 'Run the battery down to the low-voltage cutoff'],
+  ['wave', 'Look at the modified sine waveform'],
+  ['meter', 'With the 🔧 meter: battery in V DC and the socket in V AC (~230V)'],
+], () => log('🎉 Fig. 10 practice task complete!'));
+
+renderQuiz([
+  ['Why not on the controller LOAD terminal?', ['LOAD voltage is lower', 'LOAD is ~10A max; the inverter pulls up to 28A plus inrush', 'The inverter dislikes solar'], 1, 'That is why the plan says: straight from the battery, with a 30–40A fuse and 6 sq mm wire.'],
+  ['Roughly how much battery current does a 300W inverter draw at full load?', ['~2.5A', '~28A', '~300A'], 1, '300W ÷ 0.88 ÷ 12V ≈ 28A. Hence thick wire and a 30–40A fuse.'],
+  ['On a 26Ah battery (~13Ah usable), how long does a 50W table fan run?', ['~10 min', '~2.5 hr', '~26 hr'], 1, '(50 ÷ 0.88 + 5W idle) ÷ 12.4V ≈ 5A. 13Ah ÷ 5A ≈ 2.5 hr.'],
+  ['A fridge is only 150W. Why will it not run on a 300W inverter?', ['A fridge is DC, not AC', 'The compressor needs a 5–8× surge at start', 'A fridge does not need pure sine'], 1, 'Motor loads (fridge, cooler, pump) pull several times their running current when starting.'],
+  ['What should you do with the inverter when nothing needs it?', ['Leave it on, it uses nothing', 'Switch it off: idle eats 4–7W', 'Move it to the LOAD terminal'], 1, '5W × 12 hr = 60Wh, about 5Ah a day just idling.'],
+]);
+
+function resetFaults() { Object.assign(st, { blown: false, burnt: false, ctrlOL: false, trip: null, lvdCut: false }); }
+
+const actions = {
+  oLoad() {
+    st.wiring = 'load';
+    log('Inverter cable is now on the controller 💡 LOAD terminal.', 'w');
+    if (st.on) { st.ctrlOL = true; log('💥 Capacitor inrush + load current > 10A. Controller shows OL; the LOAD MOSFET can burn.', 'e'); tick('load'); }
+  },
+  oThin() { st.thin = true; st.hotLogged = false; log('Inverter cable is now 1.5 sq mm. Run a load and watch the heat.', 'w'); },
+  oNoFuse() { st.fuse = false; log('Fuse removed. If anything shorts now, the cable becomes the fuse.', 'w'); },
+  oShort() {
+    if (st.wiring !== 'batt') return log('First wire the inverter back to the battery ("Fix everything").', 'w');
+    shortCircuit('A spanner across + and −!');
+  },
+  oNoLvd() { st.lvdOn = false; log('LVD off. The inverter will now pull the battery down to ~10.5V (deep discharge).', 'w'); },
+  oFix() {
+    Object.assign(st, { wiring: 'batt', thin: false, fuse: true, lvdOn: true, heavy: null, hotLogged: false });
+    resetFaults();
+    log('Correct setup: straight from the battery, 6 sq mm, 40A fuse, LVD on. Heavy load removed.');
+  },
+};
+function shortCircuit(what) {
+  if (st.fuse) { st.blown = true; log(`💥 ${what} Hundreds of amps. The 40A fuse blew instantly and the cable survived.`, 'e'); }
+  else { st.burnt = true; log(`🔥 ${what} No fuse: the cable insulation melted and smoked. In real life this can start a fire. Never remove the fuse.`, 'e'); }
+}
+Object.keys(HEAVY).forEach(k => actions['h_' + k] = () => {
+  st.heavy = k; st.trip = null;
+  log(`${HEAVY[k].name} plugged in (${HEAVY[k].w}W).`);
+  if (!st.on) log('Turn the inverter ON to see what happens.'); else tryHeavy();
+});
+actions.h_none = () => { st.heavy = null; st.trip = null; log('Heavy load removed. Inverter reset.'); };
+
+Multimeter.setModel({
+  nets() {
+    const c = calc(), feed = st.wiring === 'batt' && st.fuse && !st.blown && !st.burnt;
+    const n = {
+      'bat+': { v: c.vBatt, g: 'dc', imax: 300 }, neg: { v: 0, g: 'dc', imax: 300 },
+      'load+': { v: st.ctrlOL ? 0 : c.vBatt, g: 'dc', imax: 15 },
+      L: { v: 0, vac: c.running ? 230 : 0, g: 'ac', imax: c.running ? 2.6 : 0 }, N: { v: 0, vac: 0, g: 'ac', imax: c.running ? 2.6 : 0 },
+    };
+    if (st.wiring === 'batt') n['inv+'] = { v: feed ? c.vInv : 0, g: 'dc', imax: feed ? 300 : 0 };
+    else n['inv+'] = { v: n['load+'].v, g: 'dc', imax: 15 };
+    return n;
+  },
+  resistance: (a, b) => {
+    const k = [a, b].sort().join('|');
+    if (k === 'bat+|inv+' && st.wiring === 'batt') return st.fuse && !st.blown && !st.burnt ? 0.003 + wireR() : Infinity;
+    return Infinity;
+  },
+});
+const pair = (e, a, b) => (e.redNode === a && e.blackNode === b) || (e.redNode === b && e.blackNode === a);
+Multimeter.on(e => {
+  if (e.type === 'reading') {
+    log(`📟 ${e.text} (${e.knob}${e.knob === 'V' || e.knob === 'A' ? (e.ac ? ' AC' : ' DC') : ''}, red: ${e.red}, black: ${e.black})`);
+    if (pair(e, 'bat+', 'neg') && e.knob === 'V' && !e.ac && e.value > 10) { st.seenDC = true; }
+    if (pair(e, 'L', 'N') && e.knob === 'V' && e.ac && e.value > 200) { st.seenAC = true; }
+    if (pair(e, 'L', 'N') && e.knob === 'V' && !e.ac && c0().running) log('Near 0 on DC: the socket is AC. Press FUNC for AC.', 'w');
+    if (pair(e, 'L', 'N') && e.knob === 'A' && c0().running) { st.trip = 'SHORT TRIP'; log('💥 A mode across the socket is a short. The inverter tripped. Never use A on a socket.', 'e'); render(); }
+    if (st.seenDC && st.seenAC) tick('meter');
+  }
+  if (e.type === 'short') {
+    const down = [e.redNode, e.blackNode].includes('inv+');
+    if (down && st.wiring === 'batt' && !st.blown && !st.burnt) { shortCircuit('The meter shorted the inverter input (red in 10A).'); render(); }
+    else if (pair(e, 'bat+', 'neg')) log('💥 Meter in the 10A socket straight across the battery: sparks, the meter fuse blew. The 40A fuse is downstream, so it did not help here.', 'e');
+    else log(`💥 Short through the meter (~${Math.round(e.amps)}A).`, 'e');
+  }
+});
+const c0 = () => calc();
+
+function render() {
+  const c = calc(), [s, bad] = status(c);
+  $('fig').innerHTML = build(c);
+  $('sBatt').textContent = `${c.vBatt.toFixed(2)}V ${Math.round(c.soc * 100)}%`; $('sBatt').className = c.soc < 0.5 ? 'bad' : '';
+  $('sW').textContent = `${c.acW}W`;
+  $('sA').textContent = `${c.I.toFixed(1)}A`;
+  $('sRun').textContent = c.running && c.I > 0 ? (c.runH > 48 ? '—' : `${Math.floor(c.runH)}h ${Math.round(c.runH % 1 * 60)}m`) : '—';
+  $('sStatus').textContent = s; $('sStatus').className = bad ? 'bad' : '';
+  $('bInv').textContent = st.on ? 'Turn inverter OFF' : 'Turn inverter ON'; $('bInv').classList.toggle('on', st.on);
+  document.querySelectorAll('[data-app]').forEach(b => b.classList.toggle('on', st.apps.has(b.dataset.app)));
+  $('bWave').textContent = st.wave === 'pure' ? 'Waveform: pure sine' : 'Waveform: modified sine'; $('bWave').classList.toggle('warn', st.wave === 'mod');
+  $('oLvd').textContent = st.lvdOn ? st.lvd.toFixed(2) + 'V' : 'OFF'; $('oIdle').textContent = st.idle + 'W'; $('oWob').textContent = st.wob; $('oTime').textContent = hhmm(st.t);
+
+  const rows = [['230V fan 50W', 50], ['Laptop 60W', 60], ['Router (AC) 8W', 8], ['LED 9W', 9], ['Idle only', 0]];
+  $('runCard').innerHTML = `<table>${rows.map(([n, w]) => `<tr><td>${n}</td><td>~${hoursFor(w).toFixed(1)} hr</td></tr>`).join('')}<tr><td>Math</td><td>13Ah usable ÷ ((W ÷ 0.88 + ${st.idle}W idle) ÷ 12.4V)</td></tr></table>`;
+
+  let h;
+  if (st.burnt) h = 'The cable burnt! Always fuse near the battery. "Fix everything".';
+  else if (st.blown) h = 'The fuse saved you. Remove the short and replace the fuse ("Fix everything").';
+  else if (st.ctrlOL) h = 'The controller LOAD cannot handle an inverter. Wire it straight to the battery.';
+  else if (st.trip) h = `${HEAVY[st.heavy]?.name || 'This load'} will not run on this inverter. Remove it.`;
+  else if (st.lvdCut) h = st.lvdOn ? 'The LVD protected the battery. Let the panel charge it during the day.' : 'The battery was deep-discharged! Never switch the LVD off.';
+  else if (!st.on) h = 'Inverter is OFF. Turn it ON, add appliances and press ▶.';
+  else if (st.thin && c.heat > 2) h = `${c.heat.toFixed(1)}W of heat in the thin wire; ${c.vInv.toFixed(2)}V reaches the inverter. Use 6 sq mm.`;
+  else if (!c.acW) h = `Idle: nothing is running, yet it draws ${c.I.toFixed(2)}A. Switch it off when not needed.`;
+  else h = 'Running. Press ▶ and watch the battery drop, or probe it with the 🔧 meter.';
+  $('hint').textContent = h; $('hint').classList.toggle('bad', bad || st.thin && c.heat > 2);
+
+  if (c.running && st.wiring === 'batt' && st.fuse && !st.thin) tick('wired');
+  if (c.running && !c.acW) tick('idle');
+  if (c.running && st.apps.has('laptop') && st.apps.has('router')) tick('laptop');
+  if (st.wave === 'mod') tick('wave');
+  if (st.thin && c.running && c.heat > 2) { tick('wire'); if (!st.hotLogged) { st.hotLogged = true; log(`Thin wire: ${c.I.toFixed(1)}A² × ${(wireR() * 1000).toFixed(0)}mΩ = ${c.heat.toFixed(1)}W of heat. Insulation softens, voltage drop ${(c.I * wireR()).toFixed(2)}V.`, 'e'); } }
+}
+
+function step(dt) {
+  const c = calc();
+  st.t = (st.t + dt) % 1440;
+  if (!c.running) return;
+  st.ah = Math.max(0, st.ah - c.I * dt / 60);
+  const c2 = calc();
+  if (c2.vBatt < c2.cutV || st.ah <= 0.01) {
+    st.lvdCut = true;
+    if (st.lvdOn) { log(`Battery ${c2.vBatt.toFixed(2)}V < ${st.lvd}V. The LVD switched the inverter off.`, 'w'); tick('lvd'); }
+    else { log(`Battery dragged down to ${c2.vBatt.toFixed(2)}V (${Math.round(c2.soc * 100)}%). Bad for SMF battery life.`, 'e'); tick('lvd'); }
+  }
+  if (st.apps.has('fan')) tick('fan');
+}
+
+$('bInv').onclick = () => {
+  st.on = !st.on;
+  if (!st.on) { st.trip = null; log('Inverter OFF.'); }
+  else if (st.burnt || st.blown) log('The inverter did not start: no DC is reaching it.', 'e');
+  else if (st.wiring === 'load') { st.ctrlOL = true; log('💥 Inrush the moment it turned on. Controller LOAD (10A) overloaded, OL error.', 'e'); tick('load'); }
+  else { log(`Inverter ON. Idle ~${st.idle}W.`); tryHeavy(); }
+  render();
+};
+document.querySelectorAll('[data-app]').forEach(b => b.onclick = () => {
+  const k = b.dataset.app;
+  st.apps.has(k) ? st.apps.delete(k) : st.apps.add(k);
+  if (st.apps.has(k)) log(`${APPS[k].name} (${APPS[k].w}W) plugged in.${st.wave === 'mod' && k === 'fan' ? ' On modified sine the fan will hum and run hot.' : ''}`);
+  if (k === 'fan' && st.apps.has('fan')) log(`Fan alone: runs ~${hoursFor(50).toFixed(1)} hr (13Ah usable).`);
+  render();
+});
+$('bWave').onclick = () => { st.wave = st.wave === 'pure' ? 'mod' : 'pure'; log(st.wave === 'mod' ? 'Modified sine: cheaper, but fans/motors hum and some adapters run hot. The plan says pure sine.' : 'Pure sine: the same waveform as the grid.'); render(); };
+bindMenus(actions, render);
+bindFigClicks($('fig'), select);
+$('cLvd').oninput = e => { st.lvd = +e.target.value; render(); };
+$('cIdle').oninput = e => { st.idle = +e.target.value; render(); };
+$('cWob').oninput = e => { st.wob = +e.target.value; render(); };
+$('cSpeed').onchange = e => { st.speed = +e.target.value; };
+$('cPlay').onclick = () => { st.playing = !st.playing; $('cPlay').textContent = st.playing ? '❚❚' : '▶'; };
+$('cCharge').onclick = () => { st.ah = CAP; st.lvdCut = false; log('The panel filled the battery during the day (100%).'); render(); };
+
+log('7 pm. Battery full. The inverter is wired straight to the battery with a 40A fuse and 6 sq mm cable.');
+render();
+setInterval(() => { if (st.playing) { step(st.speed / 5); render(); } }, 200);
+</script>
+</body>
+</html>

@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solar Bench — Fig. 08 ESP32 + INA226</title>
+<link rel="stylesheet" href="bench.css">
+<style>
+.stats{grid-template-columns:repeat(5,auto)}
+.stat b{font-size:16px;white-space:nowrap}
+.ctl output{float:right;font-size:11px;font-weight:700}
+.app-card{background:var(--dark);color:#e9f5ee;border-radius:14px;padding:12px 14px;border:1.6px solid var(--ink);box-shadow:2px 2px 0 var(--ink)}
+.app-card .big{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.app-card .big div span{display:block;font-size:10px;color:#9fb3a8;text-transform:uppercase;letter-spacing:.08em}
+.app-card .big div b{font-size:20px;color:var(--term)}
+.app-card .alert{margin-top:8px;padding:5px 8px;border-radius:8px;font-size:12px;font-weight:700;background:#2c3b35;color:#9fb3a8}
+.app-card .alert.on{background:#7a2a20;color:#ffd6cf}
+.app-card svg{width:100%;height:auto;margin-top:8px;display:block}
+.cols > div{min-width:0}
+pre.code{background:var(--dark);color:#d7efe0;border-radius:12px;padding:12px 14px;font-size:11.5px;line-height:1.45;overflow:auto;max-height:340px;margin:0}
+.math{font-size:12px;line-height:1.7}
+.math b{color:#2c4a96}
+</style>
+</head>
+<body>
+<div class="app">
+<aside id="side" data-cur="08"></aside>
+<script src="bench.js"></script>
+<script src="kit.js"></script>
+<script src="components/multimeter.js"></script>
+
+<main>
+  <div class="head">
+    <div>
+      <h2>Fig. 08 — ESP32 + INA226 monitor</h2>
+      <div class="kicker">high-side shunt · I2C SDA 21 / SCL 22</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Time</span><b id="sTime">06:00</b></div>
+      <div class="stat"><span>Bus V</span><b id="sV">—</b></div>
+      <div class="stat"><span>Current</span><b id="sI">—</b></div>
+      <div class="stat"><span>Today in / out</span><b id="sWh">—</b></div>
+      <div class="stat"><span>Status</span><b id="sStatus">—</b></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="actions">
+      <button class="btn" id="bScan">Run I2C scan</button>
+      <button class="btn" id="bMath">Show shunt math</button>
+      <button class="btn" id="bPlay">▶ Run the day</button>
+      <div class="row">
+        <button class="btn" id="aFan">Fan</button>
+        <button class="btn" id="aRouter">Router</button>
+        <button class="btn" id="aPhone">Phone</button>
+      </div>
+      <div class="dd">
+        <button class="btn warn" data-menu="mOops">Try a mistake ▾</button>
+        <div class="menu" id="mOops">
+          <button data-act="swap">Swap SDA and SCL</button>
+          <button data-act="gnd">Skip the common GND</button>
+          <button data-act="low">Shunt on the negative wire (low side)</button>
+          <button data-act="v5">Connect INA226 VCC to 5V</button>
+          <button data-act="fix">Fix all wiring</button>
+        </div>
+      </div>
+      <div class="hint" id="hint"></div>
+    </div>
+    <svg id="fig" viewBox="0 10 900 560" aria-label="Isometric ESP32 and INA226 wiring"></svg>
+  </div>
+
+  <div class="controls">
+    <div class="ctl"><span>Time of day <output id="oTime"></output></span><input type="range" id="cTime" min="0" max="1439" value="360"></div>
+    <div class="ctl"><span>Shunt resistor · speed</span>
+      <select id="cShunt"><option value="0.1">R100 · 0.1Ω (module default, typical)</option><option value="0.01">R010 · 0.01Ω</option><option value="0.002" selected>R002 · 0.002Ω (20A, typical)</option></select>
+      <select id="cSpeed"><option value="2">1x</option><option value="10" selected>5x</option><option value="40">20x</option></select>
+    </div>
+    <div class="ctl"><span>Weather</span><select id="cWx"><option value="1">Clear sun</option><option value="0.5">Cloudy</option><option value="0.15">Rain</option></select></div>
+    <div class="ctl"><span>Hand-drawn wobble <output id="oWob"></output></span><input type="range" id="cWob" min="0" max="6" step="0.5" value="2"></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h3>In this figure</h3>
+      <div class="note">A basic LCD controller gives no data. The INA226 puts a tiny shunt resistor in the battery + wire and measures the voltage across it: current = voltage ÷ resistance. The ESP32 reads it over I2C and sends it over WiFi. The "App preview" below can later become the real app. Open the 🔧 multimeter (M) and measure the few millivolts across the shunt yourself.</div>
+      <h3>Shunt math</h3>
+      <div class="card math" id="mathCard"></div>
+      <h3>Selected part</h3>
+      <div class="card" id="partCard"><div class="k">Nothing selected</div>Click any part or label in the figure.</div>
+      <h3>Parts in this setup</h3>
+      <div id="chips"></div>
+    </div>
+    <div>
+      <h3>App preview (simulated)</h3>
+      <div class="app-card">
+        <div class="big">
+          <div><span>Battery</span><b id="dV">—</b></div>
+          <div><span>Current</span><b id="dI">—</b></div>
+          <div><span>Charge %</span><b id="dSoc">—</b></div>
+          <div><span>Panel today</span><b id="dWh">—</b></div>
+        </div>
+        <div class="alert" id="dAlert">Alert: battery &lt; 12.1V</div>
+        <svg id="spark" viewBox="0 0 420 110"></svg>
+      </div>
+      <h3>Serial monitor (ESP32)</h3>
+      <div class="log" id="log"></div>
+      <h3>ESP32 sketch (starter)</h3>
+      <div class="row" style="margin-bottom:6px"><button class="btn" id="bCode">I read it / copy</button></div>
+      <pre class="code" id="code"></pre>
+      <h3>Check yourself</h3>
+      <div id="quiz"></div>
+      <h3>Practice task</h3>
+      <div class="note" style="margin-bottom:6px">Do these in the figure. Each step ticks itself.</div>
+      <ul class="check" id="check"></ul>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+const { P, poly, box, line, path, faceY, faceZ } = iso(15, 410, 165);
+const RED = '#d6452f', BLK = '#262624', SDA = '#3a6fd8', SCL = '#e0a72c';
+const FULL_SCALE = 0.08192;
+
+const st = {
+  t: 360, ah: 26 * 0.75, playing: false, speed: 10, wx: 1, rs: 0.002, wob: 2,
+  fan: false, router: true, phone: false,
+  swap: false, noGnd: false, low: false, v5: false,
+  whIn: 0, whOut: 0, hist: [], sel: null, alerted: false, heatWarned: false, seenAlert: false,
+};
+
+const vrest = soc => {
+  const T = [[0, 11.5], [.25, 11.9], [.5, 12.2], [.75, 12.4], [1, 12.7]];
+  for (let i = 1; i < T.length; i++) if (soc <= T[i][0]) { const [a, va] = T[i - 1], [b, vb] = T[i]; return va + (vb - va) * (soc - a) / (b - a); }
+  return 12.7;
+};
+const sunAt = t => { const h = t / 60; return h < 6 || h > 18 ? 0 : Math.sin(Math.PI * (h - 6) / 12); };
+
+function truth() {
+  const soc = st.ah / 26;
+  let ipv = 2.62 * sunAt(st.t) * st.wx;
+  if (soc > 0.9) ipv *= Math.max(0.05, (1 - soc) / 0.1);
+  const iload = (st.router ? 0.6 : 0) + (st.fan ? 0.85 : 0) + (st.phone ? 0.6 : 0) + 0.06;
+  const i = ipv - iload;
+  const v = Math.min(14.4, vrest(soc) + (ipv > 0.05 ? 0.25 * ipv + (soc > 0.9 ? 1.1 : 0) : 0) - 0.08 * iload);
+  return { soc, ipv, iload, i, v };
+}
+
+function sensor(tr) {
+  if (st.swap) return { ok: false, err: 'I2C: no device (SDA/SCL swapped)' };
+  if (st.noGnd) return { ok: true, v: 3 + Math.random() * 20, i: (Math.random() - 0.5) * 30, vsh: 0, noisy: true };
+  const vshTrue = tr.i * st.rs;
+  const vsh = Math.max(-FULL_SCALE, Math.min(FULL_SCALE, vshTrue));
+  return { ok: true, v: st.low ? 0.003 + Math.abs(tr.i) * 0.002 : tr.v, i: vsh / st.rs, vsh, clipped: Math.abs(vshTrue) > FULL_SCALE, heat: tr.i * tr.i * st.rs };
+}
+
+const PARTS = {
+  batt: { name: 'Battery 12V 26Ah', rows: [['Model', 'Exide EP 26-12'], ['Alert', 'App alert below 12.1V'], ['Table', '12.7 / 12.4 / 12.2V = 100 / 75 / 50%']] },
+  fuse: { name: 'Fuse 10A', rows: [['Where', 'Near battery +, before the shunt'], ['Why', 'Protects both the shunt and the wire']] },
+  ina: { name: 'INA226 module', rows: [['Job', 'Measures shunt voltage + bus voltage, reports over I2C'], ['Address', '0x40 (A0, A1 to GND, typical)'], ['Shunt range', '±81.92 mV full scale'], ['Bus', '0–36V, 1.25 mV/bit'], ['VCC', '2.7–5.5V; run it at 3.3V with an ESP32'], ['Price', '₹200–350']] },
+  shunt: { name: 'Shunt resistor', rows: [['What', 'A tiny resistor; current makes a voltage across it'], ['Formula', 'I = Vshunt ÷ R'], ['R100 (0.1Ω)', 'Max ~0.82A. Many cheap modules ship with this (typical)'], ['R002 (0.002Ω)', '~41A range; 20A shunt typical. Right for this setup'], ['Heat', 'P = I² × R'], ['Measure', 'Multimeter V DC across IN+ / IN−: a few mV']] },
+  esp: { name: 'ESP32 dev board', rows: [['What', 'WiFi + Bluetooth microcontroller'], ['I2C', 'SDA GPIO21, SCL GPIO22 (default)'], ['Power', 'From the controller USB 5V'], ['GPIO', '3.3V logic, not 5V tolerant'], ['Price', '₹350–450']] },
+  ctrl: { name: 'Charge controller', rows: [['BAT+', 'Comes from after the shunt (INA226 IN−)'], ['USB', 'Gives the ESP32 5V'], ['Data port', 'None, hence this separate sensor']] },
+  i2c: { name: 'I2C wires', rows: [['SDA', 'Data · INA226 SDA → GPIO21'], ['SCL', 'Clock · INA226 SCL → GPIO22'], ['VCC', 'INA226 VCC → ESP32 3.3V'], ['GND', 'One common ground for all']] },
+};
+const select = makeParts(PARTS, id => { st.sel = id; render(); });
+const log = makeLog(() => hhmm(st.t));
+const tick = makeChecklist([
+  ['scan', 'I2C scan found 0x40'],
+  ['math', 'Understood the shunt math (Vshunt ÷ R = I)'],
+  ['clip', 'Saw clipping/heat on the R100 shunt'],
+  ['shunt', 'Read 2.6A correctly on the R002 shunt'],
+  ['swap', 'Swapped SDA/SCL and saw the scan fail'],
+  ['alert', 'Saw the 12.1V alert trigger'],
+  ['day', 'Ran a full day and saw Wh/day'],
+  ['code', 'Read the ESP32 sketch'],
+  ['meter', 'Measured the shunt millivolts with the multimeter (IN+ ↔ IN−)'],
+], () => log('🎉 Fig. 08 practice task complete! Time to get a real INA226 + ESP32.'));
+
+function build(tr, s) {
+  let o = wobbleDefs(st.wob) + '<g filter="url(#wob)">';
+  o += box(0, 0, -0.8, 34, 20, 0.8, '#e6dcc6');
+
+  o += `<g class="part" data-part="ctrl">` + box(20, 2, 0, 7, 1.8, 6, '#3a4256');
+  o += `<g transform="${faceY(20, 3.8, 0)}"><rect x="15" y="${-5.2 * 15}" width="${5 * 15}" height="${2.4 * 15}" rx="3" fill="#b9dca0" class="ink"/><text x="${3.5 * 15}" y="${-3.6 * 15}" text-anchor="middle" font-size="13" font-weight="700" fill="#1d2a18">${tr.v.toFixed(1)}V</text>`;
+  [1.5, 2.5, 3.8, 4.8].forEach((u, i) => o += `<rect x="${u * 15 - 6}" y="${-1.8 * 15}" width="12" height="12" fill="${i % 2 ? '#222' : '#c84030'}" class="ink"/>`);
+  o += `<text x="${4.3 * 15}" y="${-2.1 * 15}" text-anchor="middle" font-size="10" fill="#e9e4d6">▮ BAT</text></g>`;
+  o += `<g transform="${faceX0(27, 2, 0)}"><rect x="${0.5 * 15}" y="${-3.6 * 15}" width="12" height="7" fill="#ddd" class="ink"/></g></g>`;
+
+  o += `<g class="part" data-part="batt">` + box(2, 9, 0, 7, 5, 5, '#2f2f33');
+  o += box(3.1, 10.1, 5, 0.9, 0.9, 0.4, RED) + box(7, 10.1, 5, 0.9, 0.9, 0.4, '#222');
+  o += `<g transform="${faceY(2, 14, 0)}"><text x="${3.5 * 15}" y="${-2.8 * 15}" text-anchor="middle" font-size="12" font-weight="700" fill="#eee">EXIDE 12V 26Ah</text></g></g>`;
+
+  const shuntIn = st.low ? null : [13.4, 8.6, 0.6];
+  const posPath = st.low
+    ? [[3.5, 10.5, 5.4], [3.5, 10.5, 6.6], [10, 7, 0], [21.5, 7, 0], [21.5, 3.8, 1.2]]
+    : [[3.5, 10.5, 5.4], [3.5, 10.5, 6.6], [10, 8.9, 0], [13.4, 8.9, 0], [13.4, 8.6, 0.6]];
+  o += `<path class="wire" stroke="${RED}" d="${path(posPath)}"/>`;
+  if (!st.low) o += `<path class="wire" stroke="${RED}" d="${path([[16.6, 8.6, 0.6], [16.6, 9.2, 0], [21.5, 9.2, 0], [21.5, 3.8, 1.2]])}"/>`;
+  const negPath = st.low
+    ? [[7.4, 10.5, 5.4], [7.4, 10.5, 6.2], [13.4, 8.6, 0.6]]
+    : [[7.4, 10.5, 5.4], [7.4, 10.5, 6.2], [12, 5.5, 0], [22.5, 5.5, 0], [22.5, 3.8, 1.2]];
+  o += `<path class="wire" stroke="${BLK}" d="${path(negPath)}"/>`;
+  if (st.low) o += `<path class="wire" stroke="${BLK}" d="${path([[16.6, 8.6, 0.6], [16.6, 9.4, 0], [22.5, 9.4, 0], [22.5, 3.8, 1.2]])}"/>`;
+
+  const [fx, fy] = P(...(st.low ? [10, 7, 0] : [10, 8.9, 0]));
+  o += `<g class="part" data-part="fuse" transform="translate(${fx},${fy}) rotate(30)"><rect x="-13" y="-6" width="26" height="12" rx="3" fill="#f0c13a" class="ink"/><text x="0" y="3.5" text-anchor="middle" font-size="8" font-weight="700">10A</text></g>`;
+
+  o += `<g class="part" data-part="ina">` + box(13, 6, 0, 4, 3, 0.3, '#6b3fa0');
+  o += box(13.1, 8.2, 0.3, 0.7, 0.8, 0.6, '#2a7bd6') + box(16.2, 8.2, 0.3, 0.7, 0.8, 0.6, '#2a7bd6');
+  [0, 1, 2, 3].forEach(k => o += box(13.4 + k * 0.8, 6.2, 0.3, 0.3, 0.3, 0.5, '#d4af37'));
+  o += `<g transform="${faceZ(13, 6, 0.3)}"><text x="${0.2 * 15}" y="${0.95 * 15}" font-size="6" fill="#fff">VCC GND SCL SDA</text><text x="${0.3 * 15}" y="${2.0 * 15}" font-size="8" font-weight="700" fill="#fff">INA226</text></g></g>`;
+  o += `<g class="part" data-part="shunt">` + box(14.2, 7.6, 0.3, 1.7, 0.7, 0.35, s.ok && s.heat > 0.25 ? '#c2412e' : '#1d1d1b');
+  o += `<g transform="${faceZ(14.2, 7.6, 0.65)}"><text x="${0.2 * 15}" y="${0.5 * 15}" font-size="6.5" font-weight="700" fill="#fff">${st.rs === 0.1 ? 'R100' : st.rs === 0.01 ? 'R010' : 'R002'}</text></g></g>`;
+
+  o += `<g class="part" data-part="esp">` + box(21, 11, 0, 6.2, 2.8, 0.3, '#1d1d1b');
+  o += box(21.7, 11.4, 0.3, 2.4, 2, 0.45, '#c9ced2') + box(26.4, 11.9, 0.3, 0.8, 1, 0.4, '#bbb');
+  o += `<circle cx="${P(25.2, 12.4, 0.3)[0]}" cy="${P(25.2, 12.4, 0.3)[1]}" r="2.5" fill="${s.ok && !s.noisy ? '#3fae66' : '#d6452f'}"/>`;
+  o += `<g transform="${faceZ(21, 11, 0.3)}"><text x="${0.9 * 15}" y="${1.6 * 15}" font-size="7" font-weight="700" fill="#333">ESP32</text></g></g>`;
+
+  const pin = k => [13.55 + k * 0.8, 6.35, 0.8];
+  const espPin = { v33: [21.4, 13.8, 0.3], gnd: [22.2, 13.8, 0.3], g21: [23.4, 13.8, 0.3], g22: [24.2, 13.8, 0.3], v5: [21.4, 11, 0.3] };
+  const route = (from, to, mid) => [from, [from[0], from[1] - 0.6, 1.6], [mid, from[1] - 0.6, 1.6], [mid, 15.5, 0], [to[0], 15.5, 0], to];
+  o += `<g class="part" data-part="i2c" fill="none">`;
+  o += `<path stroke="${st.v5 ? '#f08a24' : RED}" stroke-width="2" d="${path(st.v5 ? [pin(0), [13.55, 5.2, 1.6], [21.4, 5.2, 1.6], espPin.v5] : route(pin(0), espPin.v33, 18.2))}"/>`;
+  if (!st.noGnd) o += `<path stroke="${BLK}" stroke-width="2" d="${path(route(pin(1), espPin.gnd, 18.6))}"/>`;
+  else o += `<path class="off" stroke="${BLK}" stroke-width="2" stroke-dasharray="3 4" opacity=".4" d="${path(route(pin(1), espPin.gnd, 18.6))}"/>`;
+  o += `<path stroke="${SCL}" stroke-width="2" d="${path(route(pin(2), st.swap ? espPin.g21 : espPin.g22, 19))}"/>`;
+  o += `<path stroke="${SDA}" stroke-width="2" d="${path(route(pin(3), st.swap ? espPin.g22 : espPin.g21, 19.4))}"/>`;
+  o += `</g>`;
+  if (!st.noGnd) o += `<path class="wire" stroke="${BLK}" stroke-width="2" style="stroke-width:2" d="${path([pin(1), [14.35, 5.6, 1.2], [12.6, 5.5, 0]])}"/>`;
+  o += `<path class="wire" stroke="#555" d="${path([[27, 2.9, 3.4], [28.2, 2.9, 3.4], [28.6, 6, 0], [28.6, 12.4, 0], [27.2, 12.4, 0.5]])}"/>`;
+  o += `</g>` + anchors();
+
+  const L = (k, at, dx, dy, t) => { const [ax, ay] = P(...at); return pill(ax + dx, ay + dy, t, k, ax, ay, st.sel); };
+  o += L('batt', [6, 9, 5], 30, -55, 'BATTERY 12V');
+  o += L('fuse', st.low ? [10, 7, 0] : [10, 8.9, 0], -80, 40, 'FUSE 10A');
+  o += L('ina', [15, 6, 0.3], -20, -70, 'INA226 · I2C 0x40');
+  o += L('shunt', [15, 7.9, 0.65], 90, -40, `SHUNT ${st.rs}Ω`);
+  o += L('ctrl', [23.5, 2, 6], 0, -40, 'CONTROLLER · BAT');
+  o += L('esp', [24, 13.8, 0.3], 40, 60, 'ESP32 · SDA21 SCL22');
+  o += L('i2c', [19, 15.5, 0], -110, 60, 'I2C + 3.3V + GND');
+  if (st.low) o += L('shunt', [13.4, 8.6, 0.6], -150, 10, 'SHUNT ON − WIRE (LOW SIDE)');
+  return o;
+}
+function anchorDot(id, node, label, pt, r = 4) {
+  const [x, y] = P(...pt);
+  return `<circle data-anchor="${id}" data-node="${node}" data-label="${label}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="#f2efe7" stroke="#1d1d1b" stroke-width="1.3"/>`;
+}
+function anchors() {
+  const fy = st.low ? 7 : 8.9, pin = k => [13.55 + k * 0.8, 6.35, 0.85];
+  let o = anchorDot('m-bat-pos', 'batP', 'Battery +', [3.5, 10.5, 5.5]) + anchorDot('m-bat-neg', 'batN', 'Battery −', [7.4, 10.5, 5.5]);
+  o += anchorDot('m-fuse-a', 'batP', 'Fuse, battery side', [9.1, fy, 0.1]) + anchorDot('m-fuse-b', 'fuseB', 'Fuse, far side', [10.9, fy, 0.1]);
+  o += anchorDot('m-in-pos', 'inP', 'INA226 IN+ (shunt end)', [13.45, 8.6, 0.95]) + anchorDot('m-in-neg', 'inN', 'INA226 IN− / VBUS (shunt end)', [16.55, 8.6, 0.95]);
+  o += anchorDot('m-ctrl-pos', 'ctrlP', 'Controller BAT +', [21.5, 3.8, 1.3]) + anchorDot('m-ctrl-neg', 'ctrlN', 'Controller BAT −', [22.5, 3.8, 1.3]);
+  ['VCC', 'GND', 'SCL', 'SDA'].forEach((n, k) => o += anchorDot(`m-ina-${n.toLowerCase()}`, ['inaVcc', 'inaGnd', 'scl', 'sda'][k], `INA226 ${n} pin`, pin(k), 3.2));
+  o += anchorDot('m-esp-3v3', 'esp33', 'ESP32 3.3V', [21.4, 13.8, 0.35], 3.2) + anchorDot('m-esp-gnd', 'espGnd', 'ESP32 GND', [22.2, 13.8, 0.35], 3.2);
+  o += anchorDot('m-esp-21', st.swap ? 'scl' : 'sda', 'ESP32 GPIO21 (SDA)', [23.4, 13.8, 0.35], 3.2) + anchorDot('m-esp-22', st.swap ? 'sda' : 'scl', 'ESP32 GPIO22 (SCL)', [24.2, 13.8, 0.35], 3.2);
+  o += anchorDot('m-esp-5v', 'esp5', 'ESP32 5V (VIN)', [21.4, 11, 0.35], 3.2);
+  return o;
+}
+
+// Potentials relative to battery −; charge current (tr.i > 0) flows controller → shunt → battery.
+function nets() {
+  const tr = truth(), vb = tr.v, d = tr.i * st.rs, sys = (v, imax = 0.5) => ({ v, g: 'sys', imax });
+  const o = { batP: sys(vb, 300), batN: sys(0, 300), fuseB: sys(vb, 10) };
+  if (!st.low) Object.assign(o, { inP: sys(vb, 10), inN: sys(vb + d, 10), ctrlP: sys(vb + d, 10), ctrlN: sys(0, 10) });
+  else Object.assign(o, { ctrlP: sys(vb, 10), inP: sys(0, 10), inN: sys(-d, 10), ctrlN: sys(-d, 10) });
+  const gnd = st.low ? -d : 0, logic = st.v5 ? 5 : 3.3;
+  Object.assign(o, { espGnd: sys(gnd), esp33: sys(gnd + 3.3), esp5: sys(gnd + 5) });
+  const ina = v => st.noGnd ? { v, g: 'ina', imax: 0.01 } : sys(gnd + v, 0.01);
+  Object.assign(o, { inaGnd: st.noGnd ? { v: 0, g: 'ina' } : sys(0), inaVcc: st.noGnd ? { v: logic, g: 'ina' } : sys(gnd + logic), sda: ina(logic * 0.97), scl: ina(logic * 0.95) });
+  return o;
+}
+function resistance(a, b) {
+  const k = [a, b].sort().join('|');
+  return { 'inN|inP': st.rs, 'batP|fuseB': 0.005, 'ctrlN|inN': st.low ? 0.01 : Infinity, 'ctrlP|inN': st.low ? Infinity : 0.01, 'espGnd|inaGnd': st.noGnd ? Infinity : 0.02 }[k] ?? Infinity;
+}
+Multimeter.setModel({ nets, resistance });
+Multimeter.on(e => {
+  if (e.type !== 'reading' || e.knob !== 'V' || e.ac) return;
+  const pair = (x, y) => (e.redNode === x && e.blackNode === y) || (e.redNode === y && e.blackNode === x);
+  if (pair('inP', 'inN')) {
+    const mv = e.value * 1000;
+    log(`📟 Across the shunt: ${e.text} = ${mv.toFixed(1)} mV → ${(Math.abs(mv) / 1000 / st.rs).toFixed(2)}A. Real meters auto-range to mV; this one shows V.`);
+    if (Math.abs(mv) > 0.3) tick('meter');
+  } else if (pair('sda', 'espGnd') || pair('scl', 'espGnd')) log(`📟 I2C line vs GND: ${e.text}${st.v5 ? ' — above 3.3V, the ESP32 pin is stressed!' : ' (idles high, 3.3V logic).'}`, st.v5 ? 'e' : '');
+  else if (pair('inN', 'batN') && st.low) log(`📟 VBUS vs battery −: ${e.text}. Low-side shunt: the INA226 cannot see the battery voltage.`, 'w');
+});
+
+function faceX0(x, y, z) { const [a, b] = P(x, y, z); return `matrix(-0.866 0.5 0 1 ${a.toFixed(1)} ${b.toFixed(1)})`; }
+
+function drawMath(tr, s) {
+  const max = FULL_SCALE / st.rs;
+  if (!s.ok) { $('mathCard').innerHTML = `<b>${s.err}</b><br>The ESP32 never found the INA226, so there are no numbers.`; return; }
+  const vshTrue = tr.i * st.rs * 1000;
+  $('mathCard').innerHTML = `True current: <b>${tr.i.toFixed(2)}A</b> (${tr.i >= 0 ? 'charging' : 'discharging'})<br>`
+    + `Vshunt = I × R = ${tr.i.toFixed(2)} × ${st.rs} = <b>${vshTrue.toFixed(2)} mV</b><br>`
+    + `INA226 range ±81.92 mV → max on this shunt <b>${max.toFixed(2)}A</b><br>`
+    + (s.clipped ? `<span style="color:#d6452f">Clipped! Reading stuck at ${s.i.toFixed(2)}A.</span><br>` : `Read: ${(s.vsh * 1000).toFixed(2)} mV ÷ ${st.rs}Ω = <b>${s.i.toFixed(2)}A</b><br>`)
+    + `Heat in shunt: I²R = <b>${(tr.i * tr.i * st.rs).toFixed(3)} W</b>${tr.i * tr.i * st.rs > 0.25 ? ' <span style="color:#d6452f">(too much for a small SMD resistor)</span>' : ''}`;
+}
+
+function drawSpark() {
+  const h = st.hist, W = 420, H = 110, x = i => 30 + i / 287 * (W - 40);
+  const vy = v => 8 + (14.6 - v) / 3.8 * 42, iy = i => 76 - i / 3 * 20;
+  let o = `<line x1="30" y1="${vy(12.1)}" x2="${W - 10}" y2="${vy(12.1)}" stroke="#d6452f" stroke-dasharray="3 4"/><text x="2" y="${vy(12.1) + 3}" font-size="9" fill="#ff8a7a">12.1</text>`;
+  o += `<line x1="30" y1="${iy(0)}" x2="${W - 10}" y2="${iy(0)}" stroke="#46574f"/><text x="2" y="${iy(0) + 3}" font-size="9" fill="#9fb3a8">0A</text>`;
+  const ok = h.filter(p => p.v != null);
+  if (ok.length > 1) {
+    o += `<path fill="none" stroke="#9be3b4" stroke-width="1.6" d="M${h.map((p, i) => p.v == null ? '' : `${x(i).toFixed(1)},${vy(Math.max(10.8, Math.min(14.6, p.v))).toFixed(1)}`).filter(Boolean).join(' L')}"/>`;
+    o += `<path fill="none" stroke="#f3c33b" stroke-width="1.2" d="M${h.map((p, i) => p.i == null ? '' : `${x(i).toFixed(1)},${iy(Math.max(-3, Math.min(3, p.i))).toFixed(1)}`).filter(Boolean).join(' L')}"/>`;
+  }
+  o += `<text x="30" y="${H - 2}" font-size="9" fill="#9be3b4">━ volt</text><text x="80" y="${H - 2}" font-size="9" fill="#f3c33b">━ amp (+ charge / − discharge)</text><text x="${W - 10}" y="${H - 2}" font-size="9" fill="#9fb3a8" text-anchor="end">last 24 hours</text>`;
+  $('spark').innerHTML = o;
+}
+
+function render() {
+  const tr = truth(), s = sensor(tr);
+  $('fig').innerHTML = build(tr, s);
+  drawMath(tr, s); drawSpark();
+  $('sTime').textContent = hhmm(st.t); $('oTime').textContent = hhmm(st.t); $('cTime').value = Math.floor(st.t);
+  $('oWob').textContent = st.wob;
+  const fmtI = i => `${i >= 0 ? '+' : ''}${i.toFixed(2)}A`;
+  if (s.ok) {
+    $('sV').textContent = `${s.v.toFixed(2)}V`; $('sI').textContent = fmtI(s.i);
+    $('dV').textContent = `${s.v.toFixed(2)}V`; $('dI').textContent = fmtI(s.i);
+    $('dSoc').textContent = s.noisy || st.low ? '??' : `${Math.round(tr.soc * 100)}%`;
+  } else ['sV', 'sI', 'dV', 'dI', 'dSoc'].forEach(id => $(id).textContent = '—');
+  $('sWh').textContent = `${st.whIn.toFixed(0)} / ${st.whOut.toFixed(0)}Wh`;
+  $('dWh').textContent = `${st.whIn.toFixed(0)}Wh`;
+  const alert = s.ok && s.v < 12.1;
+  $('dAlert').textContent = alert ? `⚠ ALERT: battery ${s.v.toFixed(2)}V < 12.1V${st.low ? ' (false! bus V from the wrong place)' : ''}` : 'Alert: battery < 12.1V (fine for now)';
+  $('dAlert').classList.toggle('on', alert);
+  let status = 'OK', bad = false;
+  if (!s.ok) { status = 'I2C ERR'; bad = true; }
+  else if (s.noisy) { status = 'GARBAGE'; bad = true; }
+  else if (s.clipped) { status = 'CLIPPED'; bad = true; }
+  else if (alert) { status = 'ALERT'; bad = true; }
+  $('sStatus').textContent = status; $('sStatus').className = bad ? 'bad' : '';
+  ['aFan', 'aRouter', 'aPhone'].forEach(id => $(id).classList.toggle('on', st[{ aFan: 'fan', aRouter: 'router', aPhone: 'phone' }[id]]));
+  $('bPlay').textContent = st.playing ? '❚❚ Pause the day' : '▶ Run the day';
+
+  if (s.ok && s.clipped && st.rs === 0.1) tick('clip');
+  if (s.ok && !s.noisy && !st.low && st.rs === 0.002 && tr.i > 2.3) tick('shunt');
+  if (alert && !st.low && !s.noisy) { tick('alert'); if (!st.alerted) { st.alerted = true; log(`ALERT → MQTT solar/alert: battery ${s.v.toFixed(2)}V`, 'e'); } }
+  if (!alert) st.alerted = false;
+  if (s.ok && s.heat > 0.25 && !st.heatWarned) { st.heatWarned = true; log(`Shunt hot: ${s.heat.toFixed(2)}W in a tiny resistor. R100 + 2A+ = burn risk.`, 'e'); }
+  if (!(s.ok && s.heat > 0.25)) st.heatWarned = false;
+
+  let h = '';
+  if (st.swap) h = 'SDA/SCL are swapped. Run the scan, then "Fix all wiring".';
+  else if (st.noGnd) h = 'No common GND: readings are garbage. Connect GND.';
+  else if (st.low) h = 'Shunt on the − wire: current is fine, but bus voltage reads ~0V. The alert fires falsely.';
+  else if (st.v5) h = 'VCC on 5V: the INA226 works, but the I2C pull-ups go to 5V and ESP32 pins are 3.3V.';
+  else if (s.clipped) h = 'Current is out of range on the R100 shunt. Pick R002.';
+  else if (!st.playing) h = 'Press "Run the day": the dashboard and graph go live.';
+  else h = 'Watch the dashboard: + (charge) by day, − (discharge) at night.';
+  $('hint').textContent = h; $('hint').classList.toggle('bad', st.swap || st.noGnd || st.low || st.v5 || !!s.clipped);
+}
+
+function step(dt) {
+  const tr = truth(), s = sensor(tr);
+  st.ah = Math.max(0, Math.min(26, st.ah + tr.i * dt / 60));
+  st.whIn += tr.ipv * tr.v * dt / 60; st.whOut += tr.iload * tr.v * dt / 60;
+  const prevSlot = Math.floor(st.t / 5);
+  st.t += dt;
+  if (Math.floor(st.t / 5) !== prevSlot) {
+    st.hist.push(s.ok && !s.noisy ? { v: s.v, i: s.i } : { v: null, i: null });
+    if (st.hist.length > 288) st.hist.shift();
+  }
+  if (Math.floor(st.t / 60) !== Math.floor((st.t - dt) / 60) && s.ok && Math.floor(st.t / 60) % 3 === 0)
+    log(`MQTT solar/state {"v":${s.v.toFixed(2)},"i":${s.i.toFixed(2)},"wh_in":${st.whIn.toFixed(0)}}`);
+  if (st.t >= 1440) {
+    log(`— Day over: ${st.whIn.toFixed(0)}Wh from panel, ${st.whOut.toFixed(0)}Wh to loads —`);
+    tick('day'); st.t -= 1440; st.whIn = st.whOut = 0;
+  }
+}
+
+const actions = {
+  swap() { st.swap = true; log('SDA → GPIO22, SCL → GPIO21 (swapped).', 'w'); },
+  gnd() { st.noGnd = true; log('INA226 GND and ESP32 GND are separate. No reference, readings are random.', 'w'); },
+  low() { st.low = true; log('Shunt placed in the battery − wire (low side). INA226 VBUS now sees ~0V.', 'w'); },
+  v5() { st.v5 = true; log('INA226 VCC → ESP32 5V pin. The module pull-ups drag SDA/SCL to 5V: risky for ESP32 GPIO.', 'e'); },
+  fix() { Object.assign(st, { swap: false, noGnd: false, low: false, v5: false }); log('Wiring fixed: high-side shunt, VCC 3.3V, common GND, SDA21/SCL22.'); },
+};
+
+$('bScan').onclick = () => {
+  log('Scanning I2C bus (SDA 21, SCL 22)...');
+  if (st.swap) { log('No I2C devices found. Check SDA/SCL.', 'e'); tick('swap'); }
+  else if (st.noGnd) log('Device 0x40 found sometimes, not always (no common GND).', 'w');
+  else { log('I2C device found at 0x40 ✓ (INA226)'); tick('scan'); }
+  render();
+};
+$('bMath').onclick = () => { const tr = truth(); log(`Math: ${tr.i.toFixed(2)}A × ${st.rs}Ω = ${(tr.i * st.rs * 1000).toFixed(2)} mV across the shunt. The INA226 reads this mV and divides by R.`); tick('math'); select('shunt'); };
+$('bPlay').onclick = () => { st.playing = !st.playing; render(); };
+$('aFan').onclick = () => { st.fan = !st.fan; render(); };
+$('aRouter').onclick = () => { st.router = !st.router; render(); };
+$('aPhone').onclick = () => { st.phone = !st.phone; render(); };
+$('bCode').onclick = () => { navigator.clipboard?.writeText($('code').textContent).catch(() => {}); log('Sketch copied. Check the library API version.'); tick('code'); };
+bindMenus(actions, render);
+bindFigClicks($('fig'), select);
+$('cTime').oninput = e => { st.t = +e.target.value; render(); };
+$('cShunt').onchange = e => { st.rs = +e.target.value; log(`Shunt ${st.rs}Ω: max ${(FULL_SCALE / st.rs).toFixed(2)}A. Set the same R in the sketch.`); render(); };
+$('cSpeed').onchange = e => st.speed = +e.target.value;
+$('cWx').onchange = e => { st.wx = +e.target.value; render(); };
+$('cWob').oninput = e => { st.wob = +e.target.value; render(); };
+
+$('code').textContent = `// INA226 + MQTT. Library: "INA226" (Rob Tillaart), PubSubClient. Check the API version.
+#include <Wire.h>
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <INA226.h>
+
+INA226 ina(0x40);
+WiFiClient net;
+PubSubClient mqtt(net);
+float whIn = 0, whOut = 0;
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(21, 22);                     // SDA, SCL
+  if (!ina.begin()) Serial.println("INA226 not found");
+  ina.setMaxCurrentShunt(20, 0.002);      // 20A, R002 shunt
+  WiFi.begin("WIFI_NAME", "WIFI_PASSWORD");
+  mqtt.setServer("192.168.1.10", 1883);
+}
+
+void loop() {
+  if (!mqtt.connected()) mqtt.connect("solar-bench");
+  float v = ina.getBusVoltage();
+  float i = ina.getCurrent();             // + charge, - discharge
+  if (i > 0) whIn += v * i * 5 / 3600.0; else whOut += v * -i * 5 / 3600.0;
+  char msg[96];
+  snprintf(msg, sizeof msg, "{\\"v\\":%.2f,\\"i\\":%.2f,\\"wh_in\\":%.0f}", v, i, whIn);
+  mqtt.publish("solar/state", msg);
+  if (v < 12.1) mqtt.publish("solar/alert", "battery low");
+  mqtt.loop();
+  delay(5000);
+}`;
+
+renderQuiz([
+  ['2.6A current, 0.002Ω shunt. What voltage does the INA226 see?', ['2.6V', '5.2 mV', '0.52 V'], 1, 'V = I × R = 2.6 × 0.002 = 0.0052V. That tiny, hence the precise ADC.'],
+  ['The module came with an R100 (0.1Ω) shunt. The panel gives 2.6A. What happens?', ['All fine', 'Reading sticks at ~0.82A and the shunt heats up (0.68W)', 'ESP32 resets'], 1, 'Range ±81.92mV ÷ 0.1Ω = 0.82A. Get a 10–20A rated shunt (R002).'],
+  ['The I2C scan found nothing. What do you check first?', ['WiFi password', 'SDA/SCL pins and common GND', 'Battery voltage'], 1, 'SDA → GPIO21, SCL → GPIO22, and one shared GND.'],
+  ['Why power the INA226 from the ESP32 3.3V, not 5V?', ['5V burns the INA226', 'The module pull-ups pull I2C lines to VCC; ESP32 GPIO is 3.3V', 'No difference'], 1, 'The INA226 itself runs on 5V; the problem is the ESP32 pins.'],
+  ['Why put the shunt on the battery + side (high side)?', ['It is cheaper', 'Bus voltage reads the true battery voltage and ground stays common', 'Current shows reversed'], 1, 'On the low side bus V reads ~0 and the ground shifts.'],
+]);
+
+log('ESP32 boot. INA226 0x40, shunt 0.002Ω. Press "Run the day". M opens the multimeter.');
+render();
+setInterval(() => { if (st.playing) { step(st.speed / 5); render(); } }, 200);
+</script>
+</body>
+</html>

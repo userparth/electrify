@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solar Bench — Fig. 04 Battery</title>
+<link rel="stylesheet" href="bench.css">
+<style>
+.stats{grid-template-columns:repeat(5,auto)}
+.stat b{font-size:16px;white-space:nowrap}
+.controls{row-gap:14px}
+.ctl output{float:right;font-size:11px;font-weight:700}
+svg.chart{width:100%;height:auto;display:block;background:var(--paper);border:1.6px solid var(--ink);border-radius:12px;box-shadow:2px 2px 0 var(--ink);margin-bottom:10px}
+svg.chart text{font:10px ui-monospace,Menlo,monospace}
+.card input[type=number]{width:52px;font:inherit;font-size:12px;border:1.4px solid var(--ink);border-radius:6px;padding:1px 4px;background:#fff}
+.card tr.hl td{background:#f7dfa0}
+.bar{height:10px;border:1.4px solid var(--ink);border-radius:5px;overflow:hidden;background:#fff;margin:4px 0}
+.bar i{display:block;height:100%}
+</style>
+</head>
+<body>
+<div class="app">
+<aside id="side" data-cur="04"></aside>
+<script src="bench.js"></script>
+
+<main>
+  <div class="head">
+    <div>
+      <h2>Fig. 04 — Battery</h2>
+      <div class="kicker">Exide Powersafe Plus EP 26-12 · 12V 26Ah · SMF / VRLA · ~9 kg</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Time</span><b id="sTime">20:00</b></div>
+      <div class="stat"><span>Voltage</span><b id="sV">—</b></div>
+      <div class="stat"><span>True charge</span><b id="sSoc">—</b></div>
+      <div class="stat"><span>Mode</span><b id="sMode">REST</b></div>
+      <div class="stat"><span>Health · life</span><b id="sLife">—</b></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="actions">
+      <button class="btn" id="bDis">💡 Run a load</button>
+      <button class="btn" id="bChg">☀ Charge</button>
+      <button class="btn" id="bRest">Rest (all off)</button>
+      <button class="btn" id="bMeas">🔧 Measure voltage with the meter</button>
+      <button class="btn" id="bNight">Run a budget night</button>
+      <button class="btn" id="bCut">Cutaway (look inside)</button>
+      <button class="btn" id="bShop">Check a battery at the shop</button>
+      <div class="dd">
+        <button class="btn warn" data-menu="mOops">Try a mistake ▾</button>
+        <div class="menu" id="mOops">
+          <button data-act="oDrain">Drain it to 0%</button>
+          <button data-act="oHot">Keep it somewhere hot (45°C)</button>
+          <button data-act="oOver">Wrong setting: charge at 15V+</button>
+          <button data-act="oShort">Drop a spanner across the terminals</button>
+          <button data-act="oPar">Old 26Ah + new 42Ah in parallel</button>
+        </div>
+      </div>
+      <div class="hint" id="hint"></div>
+    </div>
+    <svg id="fig" viewBox="0 40 900 560" aria-label="Isometric battery"></svg>
+  </div>
+
+  <div class="controls">
+    <div class="ctl"><span>Time of day <output id="oTime"></output></span><input type="range" id="cTime" min="0" max="1439" value="1200"></div>
+    <div class="ctl"><span>Play · speed</span>
+      <button class="btn" id="cPlay" style="padding:1px 10px">❚❚</button>
+      <select id="cSpeed"><option value="2">1x</option><option value="10" selected>5x</option><option value="40">20x</option></select>
+    </div>
+    <div class="ctl"><span>Load (discharge)</span>
+      <select id="cLoad"><option value="0.85">Fan 10W · 0.85A</option><option value="0.6">Router · 0.6A</option><option value="0.4">LED 5W · 0.4A</option><option value="1.45">Fan + router · 1.45A</option><option value="3">Big load · 3A</option></select>
+    </div>
+    <div class="ctl"><span>Charge current</span>
+      <select id="cChg"><option value="2.6">1 panel, good sun · 2.6A</option><option value="1.2">Winter/cloudy · 1.2A</option><option value="5.2">2 panel (Feb) · 5.2A</option></select>
+    </div>
+    <div class="ctl"><span>Room temp <output id="oTemp"></output></span><input type="range" id="cTemp" min="0" max="50" value="27"></div>
+    <div class="ctl"><span>Hand-drawn wobble <output id="oWob"></output></span><input type="range" id="cWob" min="0" max="6" step="0.5" value="2"></div>
+    <div class="ctl"><span>Battery colour</span><span id="cSw" style="text-transform:none;letter-spacing:0;color:inherit"></span></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h3>In this figure</h3>
+      <div class="note">Inside, a 12V battery is 6 cells of ~2.1V each. Lead plates and acid (soaked into glass mat) store chemical energy. Voltage only tells you the charge after ~1 hour of rest. The deeper you drain it, the faster it ages. Open the 🔧 meter and probe the terminals, or the cells in the cutaway.</div>
+      <h3>Selected part</h3>
+      <div class="card" id="partCard"><div class="k">Nothing selected</div>Click the battery or a label. The cutaway shows cells and plates.</div>
+      <h3>Battery parts</h3>
+      <div id="chips"></div>
+      <h3>Voltage → charge (after 1 hr rest)</h3>
+      <div class="card" id="socCard"></div>
+      <h3>Shop check</h3>
+      <div class="card" id="shopCard"><div class="k">No battery yet</div>Press "Check a battery at the shop".</div>
+    </div>
+    <div>
+      <h3>Daily budget (Ah)</h3>
+      <div class="card" id="budget"></div>
+      <h3>Depth of discharge vs cycles (typical VRLA)</h3>
+      <svg class="chart" id="life" viewBox="0 0 420 200"></svg>
+      <h3>Serial monitor (event log)</h3>
+      <div class="log" id="log"></div>
+      <h3>Check yourself</h3>
+      <div id="quiz"></div>
+      <h3>Practice task</h3>
+      <div class="note" style="margin-bottom:6px">Do these in the figure; each step ticks itself. On the real battery, measure this 1–2 times a week.</div>
+      <ul class="check" id="check"></ul>
+    </div>
+  </div>
+</main>
+</div>
+
+<script src="kit.js"></script>
+<script src="components/multimeter.js"></script>
+<script>
+const K = iso(15, 470, 170), { P, poly, box, line, path, faceY, faceZ } = K, S = K.S;
+const RED = '#d6452f', BLK = '#262624';
+const SOC_T = [[0, 11.5], [.25, 11.9], [.5, 12.2], [.75, 12.4], [1, 12.7]];
+const LIFE = [[0.1, 3000], [0.2, 1500], [0.3, 1000], [0.4, 700], [0.5, 550], [0.6, 450], [0.8, 300], [1, 200]];
+const LOADS = { fan: ['Fan (hours)', 0.85, 'hr'], phone: ['Phone full charge', 1.5, 'x'], pb10: ['Power bank 10k', 4, 'x'], pb20: ['Power bank 20k', 8, 'x'], led: ['LED 5W (hours)', 0.4, 'hr'], router: ['Router DC (hours)', 0.575, 'hr'] };
+
+const st = {
+  t: 1200, playing: true, speed: 10, wob: 2, color: '#2f2f33', temp: 27,
+  soc: 0.9, health: 1, mode: 'rest', restMin: 180, vEnd: 12.6, loadI: 0.85, chgI: 2.6, night: 0,
+  cut: false, phase: 0, skipUntil: 0, sel: null, minSoc: 0.9, warned: {},
+  budget: { fan: 5, phone: 1, pb10: 1, pb20: 0, led: 0, router: 0 }, shop: null, shopOk: 0, lastChg: -999,
+};
+
+const vrest = soc => { for (let i = 1; i < SOC_T.length; i++) if (soc <= SOC_T[i][0]) { const [a, va] = SOC_T[i - 1], [b, vb] = SOC_T[i]; return va + (vb - va) * (Math.max(0, soc) - a) / (b - a); } return 12.7; };
+const socFromV = v => { if (v <= 11.5) return 0; for (let i = 1; i < SOC_T.length; i++) if (v <= SOC_T[i][1]) { const [a, va] = SOC_T[i - 1], [b, vb] = SOC_T[i]; return a + (b - a) * (v - va) / (vb - va); } return 1; };
+const effCap = () => 26 * st.health * Math.max(0.6, Math.min(1.08, 1 + 0.008 * (st.temp - 25)));
+const cyclesAt = dod => { if (dod <= LIFE[0][0]) return LIFE[0][1]; for (let i = 1; i < LIFE.length; i++) if (dod <= LIFE[i][0]) { const [a, ca] = LIFE[i - 1], [b, cb] = LIFE[i]; return ca + (cb - ca) * (dod - a) / (b - a); } return 200; };
+const tempLife = () => st.temp > 25 ? Math.pow(2, -(st.temp - 25) / 10) : 1;
+const budgetAh = () => Object.entries(st.budget).reduce((s, [k, n]) => s + n * LOADS[k][1], 0);
+const lifeYears = () => { const dod = Math.min(1, budgetAh() / 26); return Math.min(5, cyclesAt(Math.max(0.05, dod)) / 365) * tempLife() * st.health; };
+
+function current() {
+  if (st.mode === 'dis') return st.soc > 0.01 ? (st.night > 0 ? budgetAh() / 12 : st.loadI) : 0;
+  if (st.mode === 'chg') return st.chgI * (st.soc > 0.9 ? Math.max(0.05, (1 - st.soc) / 0.1) : 1);
+  return 0;
+}
+function volts() {
+  const I = current();
+  if (st.mode === 'dis') return vrest(st.soc) - I * (0.06 + 0.12 * (1 - st.soc));
+  if (st.mode === 'chg') return Math.min(14.4, vrest(st.soc) + 0.25 * I + 8 * Math.max(0, st.soc - 0.85));
+  return vrest(st.soc) + (st.vEnd - vrest(st.soc)) * Math.exp(-st.restMin / 20);
+}
+
+const log = makeLog(() => hhmm(st.t));
+const tick = makeChecklist([
+  ['cells', 'Saw the 6 cells in the cutaway (6 × ~2.1V ≈ 12.7V)'],
+  ['cellv', 'Probed one cell in the cutaway with the meter (~2.1V)'],
+  ['rest', 'Measured after 1 hour of rest and read % from the table'],
+  ['surface', 'Measured right after charging and saw the "surface charge" trap'],
+  ['loadread', 'Measured under load and saw the voltage sag'],
+  ['budget', 'Kept the daily budget within 13Ah (50%)'],
+  ['night', 'Ran a budget night and checked the morning %'],
+  ['temp', 'Saw how heat (≥40°C) cuts life'],
+  ['shop', 'Judged 2 shop batteries correctly'],
+], () => log('🎉 Fig. 04 practice task complete!'));
+
+const PARTS = {
+  battery: { name: 'Battery (Exide EP 26-12)', rows: [['Type', 'SMF / VRLA (sealed, maintenance free)'], ['Rating', '12V 26Ah, ~9 kg'], ['Usable daily', '~13Ah (50%)'], ['Life', '~2–3 years if kept above 50%'], ['Warranty', '2 years']] },
+  cell: { name: 'Cell (6 series)', rows: [['Each cell', '~2.1V full, ~1.95V empty'], ['6 cells', '6 × 2.12 ≈ 12.7V'], ['Series', 'One bad cell = the whole battery is weak']] },
+  plates: { name: 'Plates', rows: [['+ plate', 'Lead dioxide (PbO₂), brown'], ['− plate', 'Spongy lead (Pb), grey'], ['Discharge', 'Lead sulphate (white) forms on both'], ['Sulfation', 'Left empty for long, the sulphate hardens and the capacity never comes back']] },
+  agm: { name: 'AGM separator', rows: [['What', 'Glass mat soaked with acid'], ['So', 'No acid spills even if tilted'], ['Water', 'Never needs topping up (and cannot be opened)']] },
+  valve: { name: 'Safety valve (VR)', rows: [['VRLA', 'Valve Regulated Lead Acid'], ['Job', 'Releases pressure if overcharging makes gas'], ['Watch', 'Repeated overcharge dries out the water, the battery dies']] },
+  term: { name: 'Terminals', rows: [['Type', 'Bolt terminal (M5/M6)'], ['Connect', 'Crimped ring lug, tight'], ['Fuse', '10A on the + wire, near the battery'], ['Safety', 'Never touch + and − together with a spanner']] },
+  meter: { name: 'Multimeter', rows: [['Setting', 'V DC, red VΩmA, black COM'], ['When', '~1 hour after switching the load off'], ['6000 counts', '2-decimal readings like 12.65V'], ['Try it', 'Press M or the 🔧 button, drag the probes']] },
+  ctrl: { name: 'Controller / load', rows: [['Charge', 'Panel → controller → battery'], ['Discharge', 'Battery → controller LOAD → fan/router'], ['LVD', 'Load cut at 11.8–12.0V']] },
+};
+const select = makeParts(PARTS, id => { st.sel = id; render(); });
+
+function setMode(m) {
+  if (m === st.mode) return;
+  st.vEnd = volts();
+  if (st.mode === 'chg') st.lastChg = 0;
+  st.mode = m; st.restMin = 0; if (m !== 'dis') st.night = 0;
+}
+
+function measure(v = volts()) {
+  const est = socFromV(v);
+  log(`🔧 Meter: ${v.toFixed(2)}V → table says ~${Math.round(est * 100)}%. True charge ${Math.round(st.soc * 100)}%.`);
+  if (st.mode === 'dis') { log(`A load is running (${current().toFixed(2)}A), so the voltage reads low. Switch it off and wait 1 hour.`, 'w'); tick('loadread'); }
+  else if (st.mode === 'chg') log('Charging is on, so the voltage reads high. It does not tell you %.', 'w');
+  else if (st.restMin < 60) { log(`Only ${Math.round(st.restMin)} min of rest. The reading can be ${Math.round(Math.abs(est - st.soc) * 100)}% off.`, 'w'); if (st.vEnd > v && st.lastChg < 30) tick('surface'); }
+  else tick('rest');
+  if (est < 0.5 && st.mode !== 'dis') log('Below 50%! Load off, let the battery charge.', 'w');
+}
+
+const actions = {
+  oDrain() { setMode('rest'); st.soc = 0.02; st.health = Math.max(0.5, st.health - 0.08); st.minSoc = 0.02; log('Battery hit 0%. Hard sulphate on the plates: ~8% of capacity lost for good.', 'e'); },
+  oHot() { st.temp = 45; $('cTemp').value = 45; log('45°C: capacity looks slightly higher now, but life drops ~4× (roughly halves per +10°C, typical).', 'e'); tick('temp'); },
+  oOver() { st.health = Math.max(0.5, st.health - 0.04); log('Charging at 15V+: gassing, the valve vented, water inside dried out. Keep the controller on SLD for an SMF.', 'e'); },
+  oShort() { st.health = Math.max(0.5, st.health - 0.03); log('💥 The spanner bridged + and −: hundreds of amps, sparks, a red-hot spanner. Use insulated tools and cover one terminal while working on the other.', 'e'); },
+  oPar() { log('Old 26Ah + new 42Ah in parallel: different resistance and health, the new one keeps charging the old one, both wear out fast. The doc says: use them separately or exchange the old one.', 'w'); },
+};
+
+function newShop() {
+  const age = 1 + Math.floor(Math.random() * 12), v = 12.2 + Math.round(Math.random() * 7) / 10, bill = Math.random() > 0.25;
+  st.shop = { age, v, bill, good: age <= 6 && v >= 12.6 && bill };
+  log(`Shop: battery found. Made ${age} months ago, ${v.toFixed(2)}V, bill date ${bill ? 'present' : 'missing'}.`);
+}
+function judge(take) {
+  const s = st.shop; if (!s) return;
+  const right = take === s.good, why = [s.age > 6 ? `${s.age} months old (>3–6)` : '', s.v < 12.6 ? `${s.v.toFixed(2)}V (<12.6V)` : '', !s.bill ? 'no date on bill/warranty' : ''].filter(Boolean).join(', ');
+  log(right ? `✓ Right call. ${s.good ? 'Fresh battery.' : 'Reason: ' + why}` : `✗ Wrong. ${s.good ? 'This one was fine.' : 'Reason: ' + why}`, right ? '' : 'w');
+  if (right && ++st.shopOk >= 2) tick('shop');
+  st.shop = null; render();
+}
+
+function step(dt) {
+  const I = current(), cap = effCap();
+  if (st.mode === 'dis') {
+    st.soc = Math.max(0, st.soc - I * dt / 60 / cap);
+    if (st.night > 0 && (st.night -= dt) <= 0) { setMode('rest'); log(`Night over. Used the ${budgetAh().toFixed(1)}Ah budget. Rest 1 hour, then measure.`); tick('night'); }
+    if (st.soc <= 0.01) { setMode('rest'); log('Battery empty! Load off.', 'e'); }
+    if (st.soc < 0.5 && !st.warned.half) { st.warned.half = true; log(`~50% (${volts().toFixed(2)}V under load). The LVD should cut here.`, 'w'); }
+  } else if (st.mode === 'chg') {
+    st.soc = Math.min(1, st.soc + I * 0.88 * dt / 60 / cap);
+    if (st.soc >= 0.999 && !st.warned.full) { st.warned.full = true; log('Battery full. The controller would switch to float.'); }
+  } else st.restMin += dt;
+  if (st.soc > 0.6) st.warned.half = false;
+  if (st.soc < 0.95) st.warned.full = false;
+  st.minSoc = Math.min(st.minSoc, st.soc);
+  st.lastChg += st.mode === 'chg' ? 0 : dt;
+  st.t = (st.t + dt) % 1440;
+}
+
+function build() {
+  const V = volts(), I = current(), on = st.mode !== 'rest';
+  let o = wobbleDefs(st.wob) + `<g filter="url(#wob)">` + box(0, 0, -0.8, 28, 20, 0.8, '#e6dcc6');
+  o += `<g class="part" data-part="ctrl">` + box(8, 13, 0, 6, 3, 1.4, '#3a4256') + `</g>`;
+  const [cx, cy] = P(11, 14.5, 1.4);
+  o += `<text x="${cx}" y="${cy + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">${st.mode === 'chg' ? '☀ CHARGE ' + I.toFixed(1) + 'A' : st.mode === 'dis' ? '💡 LOAD ' + I.toFixed(2) + 'A' : 'REST'}</text>`;
+
+  if (!st.cut) {
+    o += `<g class="part" data-part="battery">` + box(6, 3, 0, 15, 7, 8, st.color) + `</g>`;
+    o += `<g transform="${faceY(6, 10, 0)}" class="part" data-part="battery">`;
+    o += `<rect x="${1 * S}" y="${-7 * S}" width="${13 * S}" height="${5.4 * S}" rx="4" fill="${sh(st.color, .12)}" stroke="#ddd"/>`;
+    o += `<text x="${7.5 * S}" y="${-5.1 * S}" text-anchor="middle" font-size="26" font-weight="800" fill="#fff">EXIDE</text>`;
+    o += `<text x="${7.5 * S}" y="${-4 * S}" text-anchor="middle" font-size="12" fill="#f0c13a" font-weight="700">POWERSAFE PLUS</text>`;
+    o += `<text x="${7.5 * S}" y="${-3 * S}" text-anchor="middle" font-size="11" fill="#ddd">EP 26-12 · 12V 26Ah · SMF/VRLA</text>`;
+    o += `<text x="${7.5 * S}" y="${-2.1 * S}" text-anchor="middle" font-size="9" fill="#bbb">⚠ Do not open</text>`;
+    o += `<rect x="${1 * S}" y="${-1.2 * S}" width="${13 * S}" height="8" fill="none" stroke="#ddd"/><rect x="${1 * S}" y="${-1.2 * S}" width="${13 * S * st.soc}" height="8" fill="${st.soc < 0.5 ? '#f08a7a' : '#9be3b4'}"/></g>`;
+    o += `<g transform="${faceZ(6, 3, 8)}" class="part" data-part="valve">` + [0, 1, 2, 3, 4, 5].map(k => `<circle cx="${(1.6 + k * 2.4) * S}" cy="${3.5 * S}" r="7" fill="${sh(st.color, .3)}" class="ink"/>`).join('') + `</g>`;
+  } else {
+    o += poly([P(6, 3, 0), P(21, 3, 0), P(21, 3, 8), P(6, 3, 8)], sh(st.color, -.1));
+    o += poly([P(21, 3, 0), P(21, 10, 0), P(21, 10, 8), P(21, 3, 8)], sh(st.color, -.25));
+    o += poly([P(6, 3, 0), P(6, 10, 0), P(6, 10, 8), P(6, 3, 8)], sh(st.color, -.15), 'fill-opacity=".5"');
+    o += `<g transform="${faceY(6, 9.4, 0)}">`;
+    const sul = Math.round((1 - st.soc) * 14 + (1 - st.health) * 30);
+    for (let k = 0; k < 6; k++) {
+      const u0 = 0.3 + k * 2.45, w = 2.3;
+      o += `<g class="part" data-part="cell"><rect x="${u0 * S}" y="${-7.2 * S}" width="${w * S}" height="${6.9 * S}" fill="#e8e1cf" class="ink"/>`;
+      for (let p = 0; p < 7; p++) {
+        const x = (u0 + 0.18 + p * 0.3) * S, pos = p % 2 === 0;
+        o += `<rect x="${x}" y="${-6.6 * S}" width="${0.2 * S}" height="${6 * S}" fill="${pos ? '#7a3b2e' : '#8d939a'}" stroke="#1d1d1b" stroke-width=".6" data-part="plates" class="part"/>`;
+        if (p < 6) o += `<rect x="${x + 0.2 * S}" y="${-6.5 * S}" width="${0.1 * S}" height="${5.8 * S}" fill="#fbfaf4" data-part="agm" class="part"/>`;
+      }
+      for (let d = 0; d < sul; d++) { const r = Math.sin(k * 97 + d * 31.7) * 0.5 + 0.5, q = Math.sin(k * 13 + d * 7.3) * 0.5 + 0.5; o += `<circle cx="${(u0 + 0.2 + r * 1.9) * S}" cy="${(-6.4 + q * 5.6) * S}" r="1.6" fill="#fff" opacity=".9"/>`; }
+      if (on) for (let d = 0; d < 4; d++) { const yy = ((st.phase * (st.mode === 'chg' ? 1 : -1) * 4 + d * 22 + k * 9) % 90 + 90) % 90; o += `<circle cx="${(u0 + 0.35 + d * 0.5) * S}" cy="${-6.5 * S + yy}" r="2.2" fill="${st.mode === 'chg' ? '#f3c33b' : '#5aa7e8'}"/>`; }
+      o += `<text x="${(u0 + w / 2) * S}" y="${-7.5 * S}" text-anchor="middle" font-size="9" font-weight="700">${(V / 6).toFixed(2)}</text></g>`;
+      if (k < 5) o += `<path d="M${(u0 + w - 0.3) * S},${-7.2 * S} q${0.4 * S},${-0.9 * S} ${0.75 * S},0" fill="none" stroke="${RED}" stroke-width="3"/>`;
+    }
+    o += `<text x="${7.5 * S}" y="${-9.8 * S}" text-anchor="middle" font-size="11" font-weight="700">6 cells series = ${V.toFixed(2)}V</text></g>`;
+    o += `<polygon points="${K.pts([P(6, 3, 8), P(21, 3, 8), P(21, 10, 8), P(6, 10, 8)])}" fill="none" stroke="#1d1d1b" stroke-dasharray="4 4"/>`;
+  }
+  o += box(7, 8, 8, 1, 1, 0.6, RED, 'class="part" data-part="term"') + box(19, 8, 8, 1, 1, 0.6, '#222', 'class="part" data-part="term"');
+  const wp = [[7.5, 8.5, 8.6], [7.5, 8.5, 9.4], [7.5, 11.4, 9.4], [7.5, 11.4, 0], [9, 13.4, 0.6]];
+  const wn = [[19.5, 8.5, 8.6], [19.5, 8.5, 9.4], [19.5, 11.6, 9.4], [19.5, 11.6, 0], [13.5, 13.4, 0.6]];
+  o += `<path class="wire" stroke="${RED}" d="${path(wp)}"/><path class="flow${on && I > 0 ? ' live' : ''}${st.mode === 'chg' ? ' rev' : ''}" d="${path(wp)}"/>`;
+  o += `<path class="wire" stroke="${BLK}" d="${path(wn)}"/><path class="flow${on && I > 0 ? ' live' : ''}${st.mode === 'dis' ? ' rev' : ''}" d="${path(wn)}"/>`;
+
+  o += `</g>`;
+  [['bat-pos', 'B+', 'Battery +', [7.5, 8.5, 8.6]], ['bat-neg', 'B-', 'Battery −', [19.5, 8.5, 8.6]]].forEach(([id, node, label, at]) => { const [x, y] = P(...at); o += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="#f2efe7" stroke="#1d1d1b" stroke-width="1.3" data-anchor="${id}" data-node="${node}" data-label="${label}"/>`; });
+  if (st.cut) {
+    o += `<g transform="${faceY(6, 9.4, 0)}">`;
+    for (let k = 0; k < 5; k++) { const u = 0.3 + k * 2.45 + 2.3 + 0.075; o += `<circle cx="${(u * S).toFixed(1)}" cy="${(-7.2 * S - 5).toFixed(1)}" r="4" fill="#f2efe7" stroke="#1d1d1b" stroke-width="1.2" data-anchor="cell-${k + 1}" data-node="c${k + 1}" data-label="Strap cell ${k + 1}→${k + 2}"/>`; }
+    o += `</g>`;
+  }
+
+  const lab = (at, dx, dy, t, id) => { const [x, y] = P(...at); return pill(x + dx, y + dy, t, id, x, y, st.sel); };
+  o += lab([13, 3, 8], 30, -50, 'BATTERY 12V 26Ah', 'battery');
+  o += lab([7.5, 8.5, 8.6], -110, -30, '+ TERMINAL', 'term');
+  o += lab([11, 13, 1.4], -120, 40, st.mode === 'chg' ? 'CONTROLLER (charge)' : 'CONTROLLER / LOAD', 'ctrl');
+  if (st.cut) { o += lab([6.8, 9.4, 4], -90, -10, 'CELL 1 OF 6', 'cell'); o += lab([20, 9.4, 3], 80, 10, 'PLATES (+ brown / − grey)', 'plates'); o += lab([16, 9.4, 1.2], 60, 70, 'AGM GLASS MAT', 'agm'); }
+  else o += lab([20, 5, 8], 70, -20, 'SAFETY VALVES', 'valve');
+  return o;
+}
+
+function drawLife() {
+  const x0 = 44, y0 = 168, w = 340, h = 140, dx = d => x0 + d * w, cy = c => y0 - Math.log10(c / 100) / Math.log10(40) * h;
+  let o = `<line x1="${x0}" y1="${y0}" x2="${x0 + w}" y2="${y0}" stroke="#1d1d1b"/><line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y0 - h}" stroke="#1d1d1b"/>`;
+  [0, .2, .4, .5, .6, .8, 1].forEach(d => o += `<text x="${dx(d)}" y="${y0 + 13}" text-anchor="middle">${d * 100}%</text>`);
+  [200, 500, 1000, 3000].forEach(c => o += `<text x="${x0 - 5}" y="${cy(c) + 3}" text-anchor="end">${c}</text><line x1="${x0}" x2="${x0 + w}" y1="${cy(c)}" y2="${cy(c)}" stroke="#e3dccb"/>`);
+  o += `<rect x="${dx(.5)}" y="${y0 - h}" width="${dx(1) - dx(.5)}" height="${h}" fill="#f7c9c1" opacity=".35"/><text x="${dx(.75)}" y="${y0 - h + 12}" text-anchor="middle" fill="#d6452f">deeper than 50% = damage</text>`;
+  o += `<polyline points="${LIFE.map(([d, c]) => `${dx(d).toFixed(1)},${cy(c).toFixed(1)}`).join(' ')}" fill="none" stroke="#2c4a96" stroke-width="2.2"/>`;
+  const dod = Math.min(1, budgetAh() / 26), c = cyclesAt(Math.max(0.1, dod));
+  o += `<circle cx="${dx(dod)}" cy="${cy(c)}" r="6" fill="${dod > .5 ? '#d6452f' : '#3fae66'}" stroke="#1d1d1b"/><text x="${dx(dod) + 9}" y="${cy(c) - 8}">your ${Math.round(dod * 100)}% → ~${Math.round(c)} cycles ≈ ${lifeYears().toFixed(1)} years</text>`;
+  o += `<text x="${x0}" y="14">cycles (log) · one cycle a day · life ×${tempLife().toFixed(2)} at ${st.temp}°C</text>`;
+  $('life').innerHTML = o;
+}
+
+function drawBudget() {
+  const ah = budgetAh(), pct = ah / 26;
+  let o = `<table>${Object.entries(LOADS).map(([k, [n, a, u]]) => `<tr><td>${n}</td><td><input type="number" min="0" max="24" step="${u === 'hr' ? 0.5 : 1}" data-b="${k}" value="${st.budget[k]}"> × ${a}Ah = ${(st.budget[k] * a).toFixed(1)}Ah</td></tr>`).join('')}</table>`;
+  o += `<div class="bar"><i style="width:${Math.min(100, pct * 100)}%;background:${ah > 13 ? '#f08a7a' : '#9be3b4'}"></i></div>`;
+  o += `<b>${ah.toFixed(1)}Ah / day</b> · ${Math.round(pct * 100)}% of the battery · usable 13Ah · panel good sun ~10–12Ah, winter ~5–7Ah<br>`;
+  o += ah > 13 ? '⚠ Over 50%. The battery will age fast; cut something.' : ah > 10 ? '⚠ OK for the battery, but the panel cannot refill this every day (certainly not in winter).' : '✓ Within both the battery and panel budget.';
+  $('budget').innerHTML = o;
+  $('budget').querySelectorAll('[data-b]').forEach(inp => inp.onchange = () => {
+    st.budget[inp.dataset.b] = Math.max(0, +inp.value || 0);
+    if (budgetAh() <= 13 && budgetAh() > 0) tick('budget');
+    render(); drawBudget();
+  });
+}
+
+function render() {
+  const V = volts(), I = current();
+  $('fig').innerHTML = build();
+  drawLife();
+  $('sTime').textContent = hhmm(st.t);
+  $('sV').textContent = V.toFixed(2) + 'V';
+  $('sSoc').textContent = `${Math.round(st.soc * 100)}% (${(st.soc * effCap()).toFixed(1)}Ah)`;
+  $('sSoc').className = st.soc < 0.5 ? 'bad' : '';
+  $('sMode').textContent = st.mode === 'chg' ? `CHARGE ${I.toFixed(1)}A` : st.mode === 'dis' ? `LOAD ${I.toFixed(2)}A` : `REST ${Math.min(999, Math.round(st.restMin))}m`;
+  $('sLife').textContent = `${Math.round(st.health * 100)}% · ~${lifeYears().toFixed(1)} yr`;
+  $('sLife').className = st.health < 0.9 ? 'bad' : '';
+  $('oTime').textContent = hhmm(st.t); $('cTime').value = Math.floor(st.t); $('oTemp').textContent = st.temp + '°C'; $('oWob').textContent = st.wob;
+  [['bDis', 'dis'], ['bChg', 'chg'], ['bRest', 'rest']].forEach(([id, m]) => $(id).classList.toggle('on', st.mode === m));
+  $('bNight').classList.toggle('on', st.night > 0); $('bCut').classList.toggle('on', st.cut);
+
+  const est = socFromV(V);
+  $('socCard').innerHTML = `<table>${[[12.7, '~100%'], [12.4, '~75%'], [12.2, '~50% ⚠ never go below this'], [11.9, '~25%']].map(([v, t], i, a) => `<tr class="${st.mode === 'rest' && st.restMin >= 60 && V >= v - 0.12 && (i === 0 || V < a[i - 1][0] - 0.12) ? 'hl' : ''}"><td>${v}V</td><td>${t}</td></tr>`).join('')}<tr><td>Now</td><td>${V.toFixed(2)}V → ~${Math.round(est * 100)}% ${st.mode !== 'rest' || st.restMin < 60 ? '(not rested, do not trust)' : '✓'}</td></tr></table>`;
+  $('shopCard').innerHTML = !st.shop ? `<div class="k">No battery yet</div>Press "Check a battery at the shop".` :
+    `<div class="k">Battery at the shop</div><table><tr><td>Mfg date</td><td>${st.shop.age} months ago</td></tr><tr><td>Voltage</td><td>${st.shop.v.toFixed(2)}V</td></tr><tr><td>Bill/warranty date</td><td>${st.shop.bill ? 'Yes' : 'No'}</td></tr></table><div style="margin-top:8px"><button class="chip" id="shTake">Buy it</button><button class="chip" id="shNo">Refuse</button></div>`;
+  if (st.shop) { $('shTake').onclick = () => judge(true); $('shNo').onclick = () => judge(false); }
+
+  let h = '', bad = false;
+  if (st.soc < 0.3) { h = 'Battery is very low. Charge it, or sulfation sets in.'; bad = true; }
+  else if (st.temp >= 40) { h = 'Heat kills battery life fast. Keep it somewhere cool and ventilated.'; bad = true; }
+  else if (!st.cut) h = 'Press Cutaway to see the 6 cells inside.';
+  else if (st.mode === 'rest' && st.restMin < 60) h = `Rested ${Math.round(st.restMin)} min. Measure after 60 min for a true %.`;
+  else h = 'Run a load, charge, rest, then measure. Change the budget and watch the life chart.';
+  $('hint').textContent = h; $('hint').classList.toggle('bad', bad);
+}
+
+Multimeter.setModel({
+  nets: () => { const V = volts(), n = { 'B+': { v: V, g: 'bat', imax: 300 }, 'B-': { v: 0, g: 'bat', imax: 300 } }; for (let k = 1; k < 6; k++) n['c' + k] = { v: V * (6 - k) / 6, g: 'bat', imax: 300 }; return n; },
+});
+Multimeter.on(e => {
+  if (e.type === 'reading' && e.knob === 'V' && !e.ac) {
+    const nodes = [e.redNode, e.blackNode];
+    if (nodes.includes('B+') && nodes.includes('B-')) { if (performance.now() > st.skipUntil) measure(Math.abs(e.value)); if (e.value < 0) log('Minus sign = probes reversed.', 'w'); }
+    else { const cells = Math.abs(e.value) / (volts() / 6); log(`📟 ${e.text} across ${Math.round(cells)} cell${Math.round(cells) === 1 ? '' : 's'} (${e.red} → ${e.black}).`); if (Math.round(cells) === 1) tick('cellv'); }
+  }
+  if (e.type === 'reading' && e.knob === 'V' && e.ac) log('Meter is in AC: a battery reads ~0. Press FUNC for DC.', 'w');
+  if (e.type === 'short') { st.health = Math.max(0.5, st.health - 0.03); log(`💥 Red probe in the 10A socket across the battery: ~${Math.round(e.amps)}A dead short. Same as the dropped spanner.`, 'e'); }
+});
+bindMenus(actions, render);
+bindFigClicks($('fig'), id => { select(id); if (id === 'cell' || id === 'plates') tick('cells'); });
+$('bDis').onclick = () => { setMode('dis'); log(`Load on: ${st.loadI}A.`); render(); };
+$('bChg').onclick = () => { setMode('chg'); log(`Charging: ${st.chgI}A.`); render(); };
+$('bRest').onclick = () => { setMode('rest'); log('All off. The voltage will settle slowly (~1 hour).'); render(); };
+$('bMeas').onclick = () => { Multimeter.set({ knob: 'V', ac: false, socket: 'VmA' }); Multimeter.attach('red', 'bat-pos'); Multimeter.attach('black', 'bat-neg'); st.skipUntil = performance.now() + 1500; measure(); render(); };
+$('bNight').onclick = () => {
+  setMode('dis'); st.night = 720; st.t = 1140;
+  log(`12 hours from 7 pm: budget ${budgetAh().toFixed(1)}Ah (avg ${(budgetAh() / 12).toFixed(2)}A). Check at 7 am.`); render();
+};
+$('bCut').onclick = () => { st.cut = !st.cut; if (st.cut) { tick('cells'); log('Cutaway: 6 cells, each with + (brown PbO₂) and − (grey Pb) plates and AGM mat between them.'); } render(); };
+$('bShop').onclick = () => { newShop(); render(); };
+const num = (id, key, fn) => $(id).oninput = e => { st[key] = +e.target.value; if (fn) fn(); render(); };
+num('cTime', 't'); num('cWob', 'wob'); num('cTemp', 'temp', () => { if (st.temp >= 40) tick('temp'); });
+$('cLoad').onchange = e => { st.loadI = +e.target.value; render(); };
+$('cChg').onchange = e => { st.chgI = +e.target.value; render(); };
+$('cSpeed').onchange = e => { st.speed = +e.target.value; };
+$('cPlay').onclick = () => { st.playing = !st.playing; $('cPlay').textContent = st.playing ? '❚❚' : '▶'; };
+const sw = [['#2f2f33', 'Exide'], ['#e2553f', 'tomato'], ['#e0a72c', 'mustard'], ['#7cc6a4', 'mint'], ['#3a5bd0', 'cobalt'], ['#eeb3b0', 'blush']];
+$('cSw').innerHTML = sw.map(([c, n]) => `<i class="sw${c === st.color ? ' on' : ''}" title="${n}" data-c="${c}" style="background:${c}"></i>`).join('');
+$('cSw').querySelectorAll('.sw').forEach(el => el.onclick = () => { st.color = el.dataset.c; $('cSw').querySelectorAll('.sw').forEach(x => x.classList.toggle('on', x === el)); render(); });
+
+renderQuiz([
+  ['How do you measure the battery % correctly?', ['While charging', '~1 hour after switching the load off', 'While a load runs'], 1, 'Surface charge reads high after charging, a load reads low. The table only works after rest.'],
+  ['How many cells are in a 12V battery?', ['4', '6', '12'], 1, '6 × ~2.1V ≈ 12.7V full.'],
+  ['What happens if you drain 80% daily instead of 50%?', ['Nothing', 'Cycle life roughly halves', 'The battery lasts longer'], 1, 'Typical VRLA: 50% DoD ~550 cycles, 80% ~300 cycles.'],
+  ['Where should the battery live?', ['On the roof in the sun', 'Indoors, cool and ventilated', 'In a closed cupboard near a heater'], 1, 'Life roughly halves for every ~10°C of heat (typical rule).'],
+  ['A new battery at the shop reads 12.3V. What do you do?', ['Buy it, charge at home', 'Refuse or ask for a fresh one (≥12.6V)', 'Makes no difference'], 1, 'Low voltage = it sat for a long time and sulfation has started. The mfg date should also be within 3–6 months.'],
+]);
+drawBudget();
+log('Battery at 90%, resting for 3 hours. Measure it with the meter first, then open the cutaway.');
+render();
+setInterval(() => { if (st.playing) { st.phase++; step(st.speed / 5); render(); } }, 200);
+</script>
+</body>
+</html>

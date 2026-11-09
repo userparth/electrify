@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solar Bench — Fig. 01 Full setup</title>
+<link rel="stylesheet" href="bench.css">
+</head>
+<body>
+<div class="app">
+<aside id="side" data-cur="01"></aside>
+<script src="bench.js"></script>
+
+<main>
+  <div class="head">
+    <div>
+      <h2>Fig. 01 — Full setup</h2>
+      <div class="kicker">bench · 55W panel · 10A PWM · 12V 26Ah</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Time</span><b id="sTime">07:00</b></div>
+      <div class="stat"><span>Battery</span><b id="sBatt">12.52V</b></div>
+      <div class="stat"><span>Panel → Load</span><b id="sAmps">0.0 / 0.0A</b></div>
+      <div class="stat"><span>Status</span><b id="sStatus">OFF</b></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="actions">
+      <button class="btn" id="bFuse">Insert fuse (10A)</button>
+      <button class="btn" id="bBatt">① Connect battery</button>
+      <button class="btn" id="bSet">Settings: SLD + LVD 12.0V</button>
+      <button class="btn" id="bPv">② Connect panel</button>
+      <button class="btn" id="bLoad">③ Connect load</button>
+      <div class="row">
+        <button class="btn" id="aFan">Fan</button>
+        <button class="btn" id="aUsb">Phone</button>
+        <button class="btn" id="aRouter">Router</button>
+      </div>
+      <div class="dd">
+        <button class="btn" data-menu="mMeter">Multimeter ▾</button>
+        <div class="menu" id="mMeter">
+          <button data-act="mBatt">Measure battery voltage</button>
+          <button data-act="mVoc">Measure panel Voc (open circuit)</button>
+          <button data-act="mIsc">Measure panel Isc (10A socket)</button>
+          <button data-act="mLoad">Measure the LOAD terminals</button>
+        </div>
+      </div>
+      <div class="dd">
+        <button class="btn warn" data-menu="mOops">Try a mistake ▾</button>
+        <div class="menu" id="mOops">
+          <button data-act="oPol">Connect the battery reversed</button>
+          <button data-act="o10A">Measure the battery with the probe in 10A</button>
+          <button data-act="oSwap">Replace the fuse (if blown)</button>
+          <button data-act="oReset">Disconnect everything, start over</button>
+        </div>
+      </div>
+      <div class="hint" id="hint">Start: the fuse is out. Connect the battery first, then insert the fuse.</div>
+    </div>
+    <svg id="fig" viewBox="0 40 900 720" aria-label="Isometric solar setup"></svg>
+  </div>
+
+  <div class="controls">
+    <div class="ctl"><span>Time of day</span><input type="range" id="cTime" min="0" max="1439" value="420"></div>
+    <div class="ctl"><span>Weather · speed</span>
+      <select id="cWx"><option value="1">Clear sun</option><option value="0.55">Cloudy</option><option value="0.2">Rain</option></select>
+      <select id="cSpeed"><option value="2">1x</option><option value="10" selected>5x</option><option value="40">20x</option></select>
+      <button class="btn" id="cPlay" style="padding:1px 10px">❚❚</button>
+    </div>
+    <div class="ctl"><span>Low-voltage cutoff (LVD)</span>
+      <select id="cLvd"><option value="off" selected>Off — drain to 0%</option><option value="auto">From settings (12.0V)</option><option value="11.8">11.8V</option></select>
+      <span style="display:block;margin-top:6px;font-size:10px;color:var(--mute);text-transform:uppercase;letter-spacing:.08em">Hand-drawn wobble</span><input type="range" id="cWob" min="0" max="6" step="0.5" value="2"></div>
+    <div class="ctl"><span>Battery colour</span><span id="cSw" style="text-transform:none;letter-spacing:0;color:inherit"></span></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h3>In this figure</h3>
+      <div class="note">The panel turns sunlight into current, the controller makes it safe for the battery, the battery stores it, and the load (fan, phone, router) runs from the controller's LOAD and USB outputs. Follow the same order as the real setup, and try mistakes to see what happens.</div>
+      <ol class="steps"><li>Battery (fuse out)</li><li>Insert fuse → LCD shows 12V</li><li>Settings: SLD, LVD 12.0V</li><li>Panel</li><li>Load</li></ol>
+      <div class="note">To disconnect, reverse it: Load → Panel → Battery.</div>
+      <h3>Selected part</h3>
+      <div class="card" id="partCard"><div class="k">Nothing selected</div>Click any part or label in the figure.</div>
+      <h3>Parts in this setup</h3>
+      <div id="chips"></div>
+    </div>
+    <div>
+      <h3>Serial monitor (event log)</h3>
+      <div class="log" id="log"></div>
+      <h3>Check yourself</h3>
+      <div id="quiz"></div>
+      <h3>Practice task: first-day checklist</h3>
+      <div class="note" style="margin-bottom:6px">Do all of these in the figure. Each step ticks itself. Measurements use the floating multimeter (press M).</div>
+      <ul class="check" id="check"></ul>
+    </div>
+  </div>
+</main>
+</div>
+
+<script src="components/multimeter.js"></script>
+<script>
+const S = 16, OX = 360, OY = 260;
+const P = (x, y, z = 0) => [OX + (x - y) * 0.866 * S, OY + (x + y) * 0.5 * S - z * S];
+const pts = a => a.map(p => p.map(n => n.toFixed(1)).join(',')).join(' ');
+const $ = id => document.getElementById(id);
+
+function sh(hex, f) {
+  const n = parseInt(hex.slice(1), 16), c = [n >> 16, n >> 8 & 255, n & 255];
+  return '#' + c.map(v => Math.round(f < 0 ? v * (1 + f) : v + (255 - v) * f)).map(v => v.toString(16).padStart(2, '0')).join('');
+}
+const poly = (p, fill, extra = '') => `<polygon points="${pts(p)}" fill="${fill}" class="ink" ${extra}/>`;
+function box(x, y, z, w, d, h, hex) {
+  return poly([P(x, y, z + h), P(x + w, y, z + h), P(x + w, y + d, z + h), P(x, y + d, z + h)], sh(hex, .22))
+    + poly([P(x, y + d, z), P(x + w, y + d, z), P(x + w, y + d, z + h), P(x, y + d, z + h)], hex)
+    + poly([P(x + w, y, z), P(x + w, y + d, z), P(x + w, y + d, z + h), P(x + w, y, z + h)], sh(hex, -.25));
+}
+// Maps local (u*S, -v*S) on a y=const face onto the isometric screen.
+const faceY = (x, y, z) => { const [a, b] = P(x, y, z); return `matrix(0.866 0.5 0 1 ${a.toFixed(1)} ${b.toFixed(1)})`; };
+const faceX = (x, y, z) => { const [a, b] = P(x, y, z); return `matrix(-0.866 0.5 0 1 ${a.toFixed(1)} ${b.toFixed(1)})`; };
+
+const RED = '#d6452f', BLK = '#262624';
+const WIRES = {
+  pvp:  { c: RED, p: [[9.4, 7, 3.4], [9.4, 10.4, 0], [19, 10.4, 0], [19, 8.6, 0], [19, 8.6, 7.6], [19, 8, 7.6]] },
+  pvn:  { c: BLK, p: [[10.2, 7, 3.4], [10.2, 9.8, 0], [20, 9.8, 0], [20, 8.6, 0], [20, 8.6, 7.6], [20, 8, 7.6]] },
+  batp: { c: RED, p: [[21.5, 8, 7.6], [21.5, 8.6, 7.6], [21.5, 8.6, 0], [21.5, 13.3, 0], [23.5, 13.3, 0], [23.5, 13.3, 8], [23.5, 15.4, 8], [23.5, 15.4, 6.5]] },
+  batn: { c: BLK, p: [[22.5, 8, 7.6], [22.5, 8.6, 7.6], [22.5, 8.6, 0], [22.5, 12.6, 0], [28.5, 12.6, 0], [28.5, 12.6, 8], [28.5, 15.4, 8], [28.5, 15.4, 6.5]] },
+  ldp:  { c: RED, p: [[24, 8, 7.6], [24, 8.6, 7.6], [24, 8.6, 0], [24, 9.4, 0], [31.2, 9.4, 0], [31.2, 3.2, 0], [32, 3.2, 0.3]] },
+  ldn:  { c: BLK, p: [[25, 8, 7.6], [25, 8.5, 7.6], [25, 8.5, 0], [25, 8.9, 0], [30.7, 8.9, 0], [30.7, 3.7, 0], [32, 3.7, 0.3]] },
+  dcin: { c: RED, p: [[28, 9.4, 0], [28, 11.2, 0], [29, 11.2, 0.2]] },
+  dcout:{ c: BLK, p: [[31, 11.2, 0.2], [32.5, 11.2, 0], [32.5, 12, 0.6]] },
+  usb:  { c: '#555', p: [[26, 7, 11], [26.9, 7, 11], [27.3, 6, 0], [28.3, 4.7, 0.3]] },
+};
+const wirePath = p => 'M' + p.map(q => P(...q).map(n => n.toFixed(1)).join(',')).join(' L');
+
+const PARTS = {
+  panel: { name: 'Solar panel', label: 'SOLAR PANEL 55W', at: [3, 1, 11], off: [-60, -40], rows: [
+    ['Model', 'Loom 55W Mono PERC, half-cut'], ['Pmax', '55W'], ['Vmp / Imp', '21V / 2.62A'], ['Voc / Isc', '24.5V / 2.83A'],
+    ['Size', '405×775×30 mm'], ['Remember', 'On PWM you effectively get ~35–38W. The panel is pulled down to the battery\'s ~13V.']] },
+  ctrl: { name: 'Charge controller', label: 'CHARGE CONTROLLER 10A', at: [22, 6, 15], off: [-30, -40], rows: [
+    ['Model', 'MagiDeal 10A PWM, 12/24V auto, LCD, 2× USB'], ['Battery type', 'Set SLD (sealed)'], ['LVD', '11.8–12.0V'],
+    ['Open item', 'Check the max PV input voltage. 50V is safe, 25V is risky (Voc 24.5V).'], ['Lithium', 'Not supported']] },
+  batt: { name: 'Battery', label: 'BATTERY 12V 26Ah', at: [30, 19, 3], off: [10, 44], rows: [
+    ['Model', 'Exide Powersafe Plus EP 26-12'], ['Type', 'SMF / VRLA, ~9 kg'], ['Usable', '~13Ah (50%) per day'],
+    ['12.7 / 12.4 / 12.2V', '100% / 75% / 50%'], ['Rule', 'Never let it go below 12.2V']] },
+  fuse: { name: 'Fuse 10A', label: 'FUSE 10A', at: [23.5, 14.3, 8], off: [-120, -20], rows: [
+    ['Where', 'On the battery + wire, close to the battery'], ['Type', 'Inline blade holder + 10A ATC/ATO'], ['Why', 'On a short the fuse blows before the wire burns']] },
+  fan: { name: '12V DC fan', label: '12V DC FAN', at: [33.5, 3, 8.2], off: [30, -30], rows: [
+    ['Power', '~10W'], ['Draw', '~0.85Ah per hour'], ['Connect to', 'Only the controller\'s 💡 LOAD terminals'], ['Note', 'A 230V AC fan will not run on this setup']] },
+  dcdc: { name: 'DC-DC buck-boost', label: 'DC-DC 12V', at: [30, 11.2, 0.5], off: [-20, 80], rows: [
+    ['Input', '8–40V'], ['Output', 'Fixed 12V, 2–3A'], ['Why buck-boost', 'The battery swings 11–14.4V; the router needs a steady 12V'], ['Important', 'IN− goes on controller LOAD−, not battery − (otherwise LVD is bypassed)']] },
+  router: { name: 'WiFi router', label: 'WIFI ROUTER', at: [35, 13.5, 1.2], off: [90, 25], rows: [
+    ['Draw', '6–8W, ~0.5–0.65Ah per hour'], ['How', 'DC-DC + 2A fuse + 5.5×2.1 barrel jack'], ['Polarity', '⊖–◉–⊕ = centre positive'], ['Tip', 'Switch it off at night; 24 hr is borderline']] },
+  phone: { name: 'Phone / power bank', label: 'PHONE (USB)', at: [29.3, 1.5, 0.3], off: [95, 20], rows: [
+    ['Where', 'Controller USB 5V port'], ['Phone full', '~1.5Ah from the battery'], ['Power bank 10k / 20k', '~4Ah / ~8Ah'], ['Habit', 'Charge in the daytime, while the panel is also charging']] },
+  meter: { name: 'Multimeter', label: null, rows: [
+    ['Model', 'Themisto TH-M100, 6000 counts'], ['Open it', 'Press M or the 🔧 button, then drag the probe tips onto the dots'], ['Voltage', 'Red → VΩmA, black → COM, knob V, FUNC → DC'], ['Current', 'Red → 10A, only on the panel'], ['Danger', 'Red probe in 10A on the battery = short circuit']] },
+};
+
+const st = {
+  batt: false, fuse: false, blown: false, pv: false, load: false, set: false,
+  fan: false, usb: false, router: false, mode: null, lvd: false, lvdMode: 'off', empty: false,
+  ah: 26 * 0.95, t: 420, playing: true, wx: 1, speed: 10, whIn: 0, whOut: 0,
+  color: '#2f2f33', sel: null, warned50: false, day: 1,
+};
+const CHECK = [
+  ['voc', 'Panel Voc (sun, multimeter): 22–24.5V'],
+  ['isc', 'Panel Isc (10A socket): ~2.5–2.8A'],
+  ['battv', 'Battery voltage before connecting ≥ 12.6V'],
+  ['sys12', 'Battery connected: LCD on, 12V system'],
+  ['settings', 'Settings: SLD, LVD 11.8–12V'],
+  ['charging', 'Panel connected: charging icon'],
+  ['usb', 'Phone charging from USB'],
+  ['fan', 'Fan running from the LOAD terminals'],
+  ['evening', 'Battery voltage noted in the evening (after 6 pm)'],
+];
+const done = new Set();
+
+const vrest = soc => {
+  const T = [[0, 11.5], [.25, 11.9], [.5, 12.2], [.75, 12.4], [1, 12.7]];
+  for (let i = 1; i < T.length; i++) if (soc <= T[i][0]) { const [a, va] = T[i - 1], [b, vb] = T[i]; return va + (vb - va) * (soc - a) / (b - a); }
+  return 12.7;
+};
+const sunAt = t => { const h = t / 60; return h < 6 || h > 18 ? 0 : Math.sin(Math.PI * (h - 6) / 12); };
+const hhmm = t => `${String(Math.floor(t / 60) % 24).padStart(2, '0')}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+const vocAt = sun => sun > 0.01 ? 21 + 3.5 * Math.min(1, sun * 1.3) : 0.2;
+
+function calc() {
+  const sun = sunAt(st.t) * st.wx, soc = st.ah / 26;
+  const battOK = st.batt && st.fuse && !st.blown;
+  const powered = battOK || (st.pv && sun > 0.05);
+  if (!powered) st.mode = null;
+  else if (!st.mode) {
+    st.mode = battOK ? '12V' : (sun > 0.3 ? '24V' : '12V');
+    if (st.mode === '24V') log('The controller got power from the panel only (~' + (21.5 + 3 * sun).toFixed(1) + 'V). It decided this is a 24V system!', 'e');
+    else { log('Controller on. LCD: 12V system ✓'); if (battOK) tick('sys12'); }
+  }
+  const ok12 = st.mode === '12V' && battOK;
+  let ipv = 0;
+  if (ok12 && st.pv && sun > 0) ipv = 2.62 * sun * (soc > 0.9 ? Math.max(0.04, (1 - soc) / 0.1) : 1);
+  const empty = st.ah <= 0.01;
+  const loadsOn = ok12 && st.load && !st.lvd && !empty;
+  const iload = loadsOn ? (st.fan ? 0.85 : 0) + (st.router ? 0.6 : 0) : 0;
+  const iusb = ok12 && st.usb && !st.lvd && !empty ? 0.6 : 0;
+  const iself = st.mode ? 0.015 : 0;
+  const net = ipv - iload - iusb - (battOK ? iself : 0);
+  // Near empty, lead-acid voltage collapses under load instead of staying flat.
+  const v = Math.min(14.4, vrest(soc) + (ipv > 0 ? 0.25 * ipv + (soc > 0.9 ? 1.2 : 0) : 0) - 0.08 * (iload + iusb) - Math.max(0, 0.1 - soc) * 9);
+  return { sun, soc, battOK, ipv, iload, iusb, net, v, loadsOn, ok12, empty };
+}
+
+function step(dtMin) {
+  const c = calc();
+  if (c.battOK) {
+    st.ah = Math.max(0, Math.min(26, st.ah + c.net * dtMin / 60));
+    st.whIn += c.ipv * c.v * dtMin / 60;
+    st.whOut += (c.iload + c.iusb) * c.v * dtMin / 60;
+  }
+  const lvdV = st.lvdMode === 'off' ? -1 : st.lvdMode === '11.8' ? 11.8 : st.set ? 12.0 : 10.7;
+  if (c.ok12 && !st.lvd && c.v < lvdV && (c.iload + c.iusb) > 0) { st.lvd = true; log(`LVD: ${c.v.toFixed(2)}V < ${lvdV}V, the controller cut the load.`, 'w'); }
+  if (c.battOK && c.empty && !st.empty) { st.empty = true; log('🪫 Battery completely empty (0%). Everything is off until the sun charges it. Draining lead-acid to 0% causes sulfation: do it rarely.', 'e'); }
+  if (st.empty && st.ah > 26 * 0.02) { st.empty = false; log('Battery charging again from empty.'); }
+  if (st.lvd && c.v >= 12.6) { st.lvd = false; log('Battery back at 12.6V, load reconnected.'); }
+  if (c.battOK && c.soc < 0.5 && !st.warned50) { st.warned50 = true; log(`Battery ${c.v.toFixed(2)}V, below 50%! ${st.lvdMode === 'off' ? 'LVD is off, so it will run down to 0%.' : st.set || st.lvdMode === '11.8' ? 'LVD will cut soon.' : 'The default LVD (~10.7V) is far too low; do the settings.'}`, 'w'); }
+  if (c.soc > 0.6) st.warned50 = false;
+  const prev = st.t;
+  st.t += dtMin;
+  if (st.t >= 1440) {
+    log(`— Day ${st.day} done: in ${st.whIn.toFixed(0)}Wh, out ${st.whOut.toFixed(0)}Wh —`);
+    st.t -= 1440; st.day++; st.whIn = st.whOut = 0;
+  }
+  if (Math.floor(prev / 360) !== Math.floor(st.t / 360)) {
+    const h = Math.floor(st.t / 60);
+    if (h === 6 || h === 18) log(h === 6 ? 'Morning ☀' : 'Evening: the sun is gone. Now running on the battery.');
+  }
+}
+
+function log(msg, cls = '') {
+  const el = $('log'), line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = `[${hhmm(st.t)}] ${msg}`;
+  el.appendChild(line);
+  while (el.children.length > 60) el.firstChild.remove();
+  el.scrollTop = el.scrollHeight;
+}
+function tick(k) {
+  if (done.has(k)) return;
+  done.add(k);
+  renderCheck();
+  if (done.size === CHECK.length) log('🎉 The whole first-day checklist is done! Use the same order on the real hardware.', '');
+}
+
+const anc = (id, node, label, x, y) => `<circle data-anchor="${id}" data-node="${node}" data-label="${label}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" fill="transparent" pointer-events="none"/>`;
+const anc3 = (id, node, label, p) => { const [x, y] = P(...p); return anc(id, node, label, x, y); };
+
+function anchors() {
+  let s = '<g id="anchors">';
+  s += anc3('bat-pos', 'bat+', 'Battery +', [23.5, 15.5, 6.5]) + anc3('bat-neg', 'bat-', 'Battery −', [28.5, 15.5, 6.5]);
+  const [fx, fy] = P(23.5, 14.3, 8);
+  s += anc('fuse-bat', 'fuseBat', 'Fuse (battery side)', fx - 11.3, fy + 6.5) + anc('fuse-ctl', 'fuseCtl', 'Fuse (controller side)', fx + 11.3, fy - 6.5);
+  s += `<g transform="${faceY(18, 8, 6)}">`;
+  [[1, 'pv-p', 'cPv+', 'Controller ☀ PV+'], [2, 'pv-n', 'cPv-', 'Controller ☀ PV−'], [3.5, 'cb-p', 'cBat+', 'Controller ▮ BAT+'],
+    [4.5, 'cb-n', 'cBat-', 'Controller ▮ BAT−'], [6, 'ld-p', 'cLoad+', 'Controller 💡 LOAD+'], [7, 'ld-n', 'cLoad-', 'Controller 💡 LOAD−']]
+    .forEach(([u, id, node, label]) => s += anc('ctl-' + id, node, label, u * S, -1.6 * S - 2));
+  s += `</g><g transform="${faceX(26, 6, 6)}">` + anc('usb-5v', 'usb+', 'USB 5V pin', 0.6 * S, -5.3 * S + 3) + anc('usb-gnd', 'usbG', 'USB GND pin', 1.4 * S, -5.3 * S + 3) + '</g>';
+  s += anc3('pnl-pos', 'pnl+', 'Panel MC4 +', [9.4, 7, 3.4]) + anc3('pnl-neg', 'pnl-', 'Panel MC4 −', [10.2, 7, 3.4]);
+  s += anc3('fan-pos', 'fan+', 'Fan +', [32, 3.2, 0.3]) + anc3('fan-neg', 'fan-', 'Fan −', [32, 3.7, 0.3]);
+  s += anc3('dc-in-p', 'dcIn+', 'DC-DC IN+', [29.2, 11.2, 0.45]) + anc3('dc-in-n', 'dcIn-', 'DC-DC IN−', [29.2, 10.7, 0.45]);
+  s += anc3('dc-out-p', 'dcOut+', 'DC-DC OUT+', [30.8, 11.2, 0.45]) + anc3('dc-out-n', 'dcOut-', 'DC-DC OUT−', [30.8, 10.7, 0.45]);
+  return s + '</g>';
+}
+
+function build() {
+  let s = `<defs><filter id="wob" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="4"/><feDisplacementMap id="wobMap" in="SourceGraphic" scale="${$('cWob').value}"/></filter></defs>`;
+  s += `<g id="sky"><circle id="sunDisk" cx="830" cy="110" r="26" fill="#f3c33b" class="ink"/><g id="rays" class="ink" fill="none">`;
+  for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5; s += `<line x1="${830 + Math.cos(a) * 34}" y1="${110 + Math.sin(a) * 34}" x2="${830 + Math.cos(a) * 46}" y2="${110 + Math.sin(a) * 46}"/>`; }
+  s += `</g><text id="moon" x="816" y="122" font-size="34" opacity="0">☾</text></g>`;
+  s += `<g filter="url(#wob)">`;
+  s += box(0, 0, -0.8, 37, 22, 0.8, '#e6dcc6');
+
+  s += `<g class="part" data-part="panel">`;
+  const legs = [[3, 1, 10.6], [13, 1, 10.6]];
+  legs.forEach(([x, y, h]) => s += `<line class="ink" x1="${P(x, y, 0)[0]}" y1="${P(x, y, 0)[1]}" x2="${P(x, y, h)[0]}" y2="${P(x, y, h)[1]}" stroke-width="2.5"/>`);
+  const A = [2, 1, 11], B = [14, 1, 11], C = [14, 7, 4], D = [2, 7, 4];
+  s += poly([P(...B), P(...C), P(14, 7, 3.4), P(14, 1, 10.4)], '#a9afb4');
+  s += poly([P(...D), P(...C), P(14, 7, 3.4), P(2, 7, 3.4)], '#bfc4c8');
+  s += poly([P(...A), P(...B), P(...C), P(...D)], '#c9ced2');
+  const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+  const pt = (u, w) => lerp(lerp(A, B, u), lerp(D, C, u), w);
+  s += poly([P(...pt(.03, .06)), P(...pt(.97, .06)), P(...pt(.97, .94)), P(...pt(.03, .94))], '#2c4a96', 'id="cells"');
+  for (let i = 1; i < 8; i++) { const u = .03 + .94 * i / 8; s += `<line x1="${P(...pt(u, .06))[0]}" y1="${P(...pt(u, .06))[1]}" x2="${P(...pt(u, .94))[0]}" y2="${P(...pt(u, .94))[1]}" stroke="#8fb0ea" stroke-width=".8"/>`; }
+  for (let j = 1; j < 4; j++) { const w = .06 + .88 * j / 4; s += `<line x1="${P(...pt(.03, w))[0]}" y1="${P(...pt(.03, w))[1]}" x2="${P(...pt(.97, w))[0]}" y2="${P(...pt(.97, w))[1]}" stroke="#8fb0ea" stroke-width=".8"/>`; }
+  s += `<polygon id="glare" points="${pts([P(...pt(.1, .1)), P(...pt(.3, .1)), P(...pt(.12, .5))])}" fill="#fff" opacity="0"/>`;
+  [[3, 7, 3.6], [13, 7, 3.6]].forEach(([x, y, h]) => s += `<line class="ink" x1="${P(x, y, 0)[0]}" y1="${P(x, y, 0)[1]}" x2="${P(x, y, h)[0]}" y2="${P(x, y, h)[1]}" stroke-width="2.5"/>`);
+  s += `</g>`;
+
+  s += box(17.4, 5, 0, 9.2, 1, 16.5, '#c9a77a');
+  s += `<g class="part" data-part="ctrl">` + box(18, 6, 6, 8, 2, 9, '#3a4256');
+  s += `<g transform="${faceY(18, 8, 6)}">`;
+  s += `<rect id="lcd" x="${1.2 * S}" y="${-8 * S}" width="${5.6 * S}" height="${3.4 * S}" rx="3" fill="#7d8573" class="ink"/>`;
+  s += `<text id="lcdTxt" x="${4 * S}" y="${-6.1 * S}" text-anchor="middle" font-size="15" font-weight="700" fill="#1d2a18"></text>`;
+  s += `<text id="lcdSub" x="${4 * S}" y="${-4.95 * S}" text-anchor="middle" font-size="9" font-weight="700" fill="#1d2a18"></text>`;
+  s += `<circle id="cLed" cx="${7.3 * S}" cy="${-7.6 * S}" r="3" fill="#555" class="ink"/>`;
+  [['☀', 1.5], ['▮', 4], ['💡', 6.5]].forEach(([g, u]) => s += `<text x="${u * S}" y="${-3 * S}" text-anchor="middle" font-size="11" fill="#e9e4d6">${g}</text>`);
+  [1, 2, 3.5, 4.5, 6, 7].forEach((u, i) => s += `<rect x="${u * S - 6}" y="${-2.2 * S}" width="12" height="12" fill="${i % 2 ? '#222' : '#c84030'}" class="ink"/><circle cx="${u * S}" cy="${-1.6 * S - 2}" r="3" fill="#ddd"/>`);
+  s += `</g><g transform="${faceX(26, 6, 6)}">`;
+  [0.6, 1.4].forEach(w => s += `<rect x="${w * S - 5}" y="${-5.3 * S}" width="10" height="6" fill="#ddd" class="ink" stroke-width="1"/>`);
+  s += `</g></g>`;
+
+  const wire = (k, pts3) => `<path id="w_${k}" class="wire" stroke="${WIRES[k].c}" d="${wirePath(pts3)}"/><path id="f_${k}" class="flow" d="${wirePath(pts3)}"/>`;
+  ['pvp', 'pvn', 'ldp', 'ldn', 'dcin', 'dcout', 'batp', 'batn'].forEach(k => s += wire(k, WIRES[k].p));
+
+  s += `<g class="part" data-part="batt">` + box(22, 14, 0, 8, 5, 6, st.color);
+  s += `<g transform="${faceY(22, 19, 0)}"><text x="${4 * S}" y="${-3.6 * S}" text-anchor="middle" font-size="13" font-weight="700" fill="#eee">EXIDE</text><text x="${4 * S}" y="${-2.5 * S}" text-anchor="middle" font-size="9" fill="#ddd">EP 26-12 · 12V 26Ah</text>`
+    + `<rect x="${1 * S}" y="${-1.5 * S}" width="${6 * S}" height="7" fill="none" stroke="#ddd"/><rect id="socBar" x="${1 * S}" y="${-1.5 * S}" width="0" height="7" fill="#9be3b4"/></g>`;
+  [[23.5, RED], [28.5, '#222']].forEach(([x, col]) => s += box(x - 0.5, 15, 6, 1, 1, 0.5, col));
+  s += `<text x="${P(23.5, 16.6, 6)[0]}" y="${P(23.5, 16.6, 6)[1] + 4}" font-size="12" font-weight="700" text-anchor="middle">+</text><text x="${P(28.5, 16.6, 6)[0]}" y="${P(28.5, 16.6, 6)[1] + 4}" font-size="12" font-weight="700" text-anchor="middle">−</text></g>`;
+  ['batp', 'batn'].forEach(k => { const p = WIRES[k].p; s += `<path id="t_${k}" class="wire" stroke="${WIRES[k].c}" d="${wirePath(p.slice(-3))}"/>`; });
+  s += `<g class="part" data-part="fuse" id="fuseG" transform="translate(${P(23.5, 14.3, 8).join(',')}) rotate(150)">`
+    + `<rect x="-13" y="-6" width="26" height="12" rx="3" id="fuseBody" fill="#f0c13a" class="ink"/><text x="0" y="3.5" text-anchor="middle" font-size="8" font-weight="700" transform="rotate(180)" id="fuseTxt">10A</text></g>`;
+
+  s += `<g class="part" data-part="fan">` + box(32, 1.5, 0, 3, 3, 0.6, '#d8d2c4');
+  s += `<line class="ink" x1="${P(33.5, 3, 0.6)[0]}" y1="${P(33.5, 3, 0.6)[1]}" x2="${P(33.5, 3, 4.4)[0]}" y2="${P(33.5, 3, 4.4)[1]}" stroke-width="4"/>`;
+  s += `<g transform="${faceY(33.5, 3, 6.2)}"><circle r="${2.1 * S}" fill="#efe9dc" class="ink"/><g id="blades">`;
+  for (let i = 0; i < 3; i++) s += `<ellipse rx="${0.95 * S}" ry="${0.38 * S}" cx="${0.95 * S}" fill="#7cc6a4" class="ink" transform="rotate(${i * 120})"/>`;
+  s += `</g><circle r="5" fill="#555" class="ink"/>`;
+  for (let i = -3; i <= 3; i++) s += `<line x1="${i * 0.6 * S}" y1="${-Math.sqrt(Math.max(0, 4.4 - (i * .6) ** 2)) * S}" x2="${i * 0.6 * S}" y2="${Math.sqrt(Math.max(0, 4.4 - (i * .6) ** 2)) * S}" stroke="#555" stroke-width=".6"/>`;
+  s += `</g></g>`;
+
+  s += `<g class="part" data-part="dcdc">` + box(29, 10.5, 0, 2, 1.4, 0.45, '#2f8a55') + `</g>`;
+  s += `<g class="part" data-part="router">` + box(31, 12, 0, 4, 3, 1.2, '#eceae4');
+  [[32, 12.6], [34.2, 12.6]].forEach(([x, y]) => s += `<line class="ink" x1="${P(x, y, 1.2)[0]}" y1="${P(x, y, 1.2)[1]}" x2="${P(x, y, 4)[0]}" y2="${P(x, y, 4)[1]}" stroke-width="3"/>`);
+  s += `<g transform="${faceY(31, 15, 0)}">` + [0.8, 1.6, 2.4, 3.2].map((u, i) => `<circle id="rl${i}" cx="${u * S}" cy="${-0.6 * S}" r="2.5" fill="#999"/>`).join('') + `</g></g>`;
+
+  s += `<g class="part" data-part="phone">` + box(27.6, 1.5, 0, 1.8, 3.2, 0.3, '#1f1f22');
+  s += `<polygon id="phScreen" points="${pts([P(27.8, 1.7, 0.31), P(29.2, 1.7, 0.31), P(29.2, 4.5, 0.31), P(27.8, 4.5, 0.31)])}" fill="#3a3f4a"/>`;
+  s += `<text id="phBolt" x="${P(28.5, 3.1, 0.3)[0]}" y="${P(28.5, 3.1, 0.3)[1] + 5}" text-anchor="middle" font-size="13" fill="#f3c33b" opacity="0">⚡</text></g>`;
+  s += wire('usb', WIRES.usb.p);
+  s += `</g>`;
+
+  s += `<g id="labels">`;
+  for (const [id, p] of Object.entries(PARTS)) {
+    if (!p.label) continue;
+    const [ax, ay] = P(...p.at), lx = ax + p.off[0], ly = ay + p.off[1], w = p.label.length * 6.4 + 16;
+    s += `<g class="lbl" data-part="${id}" id="l_${id}"><line x1="${ax}" y1="${ay}" x2="${lx}" y2="${ly}" stroke="#1d1d1b" stroke-width="1"/><circle cx="${ax}" cy="${ay}" r="2.5" fill="#1d1d1b"/>`
+      + `<rect x="${lx - w / 2}" y="${ly - 10}" width="${w}" height="20" rx="10"/><text x="${lx}" y="${ly + 3.5}" text-anchor="middle">${p.label}</text></g>`;
+  }
+  s += `</g>` + anchors();
+  $('fig').innerHTML = s;
+  $('fig').querySelectorAll('[data-part]').forEach(el => el.addEventListener('click', e => { e.stopPropagation(); select(el.dataset.part); }));
+  if (st.sel) select(st.sel);
+}
+
+function setWire(k, connected, live, rev = false) {
+  $('w_' + k).classList.toggle('off', !connected);
+  const t = $('t_' + k); if (t) t.classList.toggle('off', !connected);
+  const f = $('f_' + k); f.classList.toggle('off', !connected); f.classList.toggle('live', !!live); f.classList.toggle('rev', !!rev);
+}
+
+function render() {
+  const c = calc();
+  $('sunDisk').setAttribute('opacity', c.sun > 0 ? 0.35 + 0.65 * c.sun : 0);
+  $('rays').setAttribute('opacity', c.sun);
+  $('moon').setAttribute('opacity', c.sun > 0 ? 0 : 1);
+  $('glare').setAttribute('opacity', c.sun * 0.35);
+  $('cells').setAttribute('fill', c.sun > 0 ? '#2c4a96' : '#24345e');
+
+  setWire('pvp', st.pv, c.ipv > 0); setWire('pvn', st.pv, c.ipv > 0, true);
+  const bflow = c.battOK && Math.abs(c.net) > 0.05;
+  setWire('batp', st.batt, bflow, c.net < 0); setWire('batn', st.batt, bflow, c.net >= 0);
+  const fanOn = c.loadsOn && st.fan, rOn = c.loadsOn && st.router;
+  setWire('ldp', st.load, c.iload > 0); setWire('ldn', st.load, c.iload > 0, true);
+  setWire('dcin', st.load, rOn); setWire('dcout', st.load, rOn);
+  setWire('usb', st.usb, c.iusb > 0);
+
+  $('blades').classList.toggle('spin', fanOn);
+  for (let i = 0; i < 4; i++) $('rl' + i).setAttribute('fill', rOn ? (i === 3 && Math.random() > .5 ? '#999' : '#3fae66') : '#999');
+  $('phBolt').setAttribute('opacity', c.iusb > 0 ? 1 : 0);
+  $('phScreen').setAttribute('fill', c.iusb > 0 ? '#5a7fd6' : '#3a3f4a');
+
+  $('fuseBody').setAttribute('fill', st.blown ? '#9a9a9a' : st.fuse ? '#f0c13a' : 'none');
+  $('fuseBody').setAttribute('stroke-dasharray', st.fuse || st.blown ? '' : '3 3');
+  $('fuseTxt').textContent = st.blown ? '✕' : st.fuse ? '10A' : '';
+
+  const lcd = $('lcd'), on = !!st.mode;
+  lcd.setAttribute('fill', !on ? '#7d8573' : st.mode === '24V' ? '#f0a596' : '#b9dca0');
+  $('lcdTxt').textContent = !on ? '' : st.mode === '24V' ? '24V ?!' : `${c.v.toFixed(1)}V`;
+  $('lcdSub').textContent = !on ? '' : st.mode === '24V' ? 'WRONG SYSTEM' : `${c.ipv > 0 ? '☀→▮ ' : ''}${st.lvd ? 'LVD CUT' : c.empty ? 'EMPTY' : c.loadsOn ? 'LOAD ON' : ''}${st.lvdMode === 'off' ? ' NO LVD' : st.set ? ' SLD' : ''}`;
+  $('cLed').setAttribute('fill', !on ? '#555' : c.ipv > 0 ? '#3fae66' : st.mode === '24V' ? '#d6452f' : '#f3c33b');
+  $('socBar').setAttribute('width', (6 * S * c.soc).toFixed(1));
+
+  $('sTime').textContent = hhmm(st.t);
+  $('sBatt').textContent = `${c.v.toFixed(2)}V ${Math.round(c.soc * 100)}%`;
+  $('sBatt').className = c.soc < 0.5 ? 'bad' : '';
+  $('sAmps').textContent = `${c.ipv.toFixed(1)} / ${(c.iload + c.iusb).toFixed(1)}A`;
+  let status = 'OFF', bad = false;
+  if (st.blown) { status = 'FUSE BLOWN'; bad = true; }
+  else if (st.mode === '24V') { status = 'FAULT 24V'; bad = true; }
+  else if (st.lvd) { status = 'LVD CUT'; bad = true; }
+  else if (st.empty && st.batt) { status = 'EMPTY'; bad = true; }
+  else if (c.ipv > 0) status = 'CHARGING';
+  else if (c.iload + c.iusb > 0) status = 'DISCHARGING';
+  else if (st.mode) status = 'STANDBY';
+  $('sStatus').textContent = status; $('sStatus').className = bad ? 'bad' : '';
+
+  if (c.ipv > 0) tick('charging');
+  if (c.iusb > 0) tick('usb');
+  if (fanOn) tick('fan');
+
+  const btn = (id, onState, a, b) => { $(id).textContent = onState ? b : a; $(id).classList.toggle('on', onState); };
+  btn('bFuse', st.fuse, 'Insert fuse (10A)', 'Pull fuse');
+  btn('bBatt', st.batt, '① Connect battery', 'Disconnect battery');
+  btn('bPv', st.pv, '② Connect panel', 'Disconnect panel');
+  btn('bLoad', st.load, '③ Connect load', 'Disconnect load');
+  $('bSet').classList.toggle('on', st.set);
+  $('aFan').classList.toggle('on', st.fan); $('aUsb').classList.toggle('on', st.usb); $('aRouter').classList.toggle('on', st.router);
+  $('cTime').value = Math.floor(st.t);
+  hint(c);
+}
+
+function hint(c) {
+  let h = '', bad = false;
+  if (st.blown) { h = 'The fuse blew. Fix the cause, then "Replace the fuse".'; bad = true; }
+  else if (st.mode === '24V') { h = 'The controller is in the wrong 24V mode. Disconnect everything and connect the battery first.'; bad = true; }
+  else if (!st.batt) h = 'Step 1: connect the battery to the controller\'s ▮ terminals (leave the fuse out).';
+  else if (!st.fuse) h = 'Step 2: insert the fuse. The LCD turns on and should show 12V.';
+  else if (!st.set) h = 'Step 3: settings. Battery type SLD, LVD 12.0V.';
+  else if (!st.pv) h = 'Step 4: connect the panel. In sunlight, charging starts.';
+  else if (!st.load) h = 'Step 5: connect the load, then turn on the fan / phone / router.';
+  else if (st.lvd) { h = 'LVD cut the load. Let the battery charge in the sun.'; bad = true; }
+  else if (st.empty) { h = 'Battery is completely empty. Wait for the sun to recharge it.'; bad = true; }
+  else if (c.sun === 0) h = 'Night. Running on the battery; keep an eye on the voltage.';
+  else h = 'The setup is running. Measure with the multimeter (M) or try a mistake.';
+  $('hint').textContent = h; $('hint').classList.toggle('bad', bad);
+}
+
+function select(id) {
+  st.sel = id;
+  const p = PARTS[id];
+  $('partCard').innerHTML = `<div class="k">${p.name}</div><table>${p.rows.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('')}</table>`;
+  document.querySelectorAll('.lbl').forEach(l => l.classList.toggle('sel', l.dataset.part === id));
+  document.querySelectorAll('#chips .chip').forEach(ch => ch.classList.toggle('sel', ch.dataset.part === id));
+}
+
+function meterNets() {
+  const c = calc(), n = {}, Vb = c.battOK ? c.v : vrest(c.soc), voc = vocAt(c.sun), ipv = 2.83 * c.sun;
+  const put = (k, v, g, imax) => { n[k] = { v, g, imax }; };
+  const same = (k, from) => { if (n[from]) n[k] = { ...n[from] }; };
+  put('bat+', Vb, 'bat', 300); put('bat-', 0, 'bat', 300);
+  if (st.batt) { put('fuseBat', Vb, 'bat', 300); put('cBat-', 0, 'bat', 300); }
+  const g = c.battOK ? 'bat' : st.pv && st.mode ? 'pv' : null;
+  if (g) {
+    const plus = g === 'bat' ? Vb : voc, out = c.ok12 && !st.lvd;
+    ['fuseCtl', 'cBat+', 'cLoad+', 'cPv+'].forEach(k => put(k, plus, g, 300));
+    if (g === 'pv') put('cPv-', 0, g, ipv);
+    else if (st.pv) put('cPv-', c.ipv > 0 ? 0.15 : Vb - voc, g, ipv);
+    put('cLoad-', out ? 0 : plus, g, 15);
+    if (g === 'bat') { put('usb+', out ? 5.05 : 0, g, 2); put('usbG', 0, g, 300); }
+    if (st.load) {
+      same('fan+', 'cLoad+'); same('fan-', 'cLoad-'); same('dcIn+', 'cLoad+'); same('dcIn-', 'cLoad-');
+      const lo = n['cLoad-'].v, vin = plus - lo;
+      put('dcOut-', lo, g, 3); put('dcOut+', lo + (vin >= 8 ? 12.0 : 0), g, 3);
+    }
+    if (st.pv) { same('pnl+', 'cPv+'); same('pnl-', 'cPv-'); }
+  }
+  if (!st.pv) { put('pnl+', voc, 'panel', ipv); put('pnl-', 0, 'panel', ipv); }
+  else if (!g) { ['pnl+', 'cPv+'].forEach(k => put(k, voc, 'panel', ipv)); ['pnl-', 'cPv-'].forEach(k => put(k, 0, 'panel', ipv)); }
+  return n;
+}
+
+function meterR(a, b) {
+  const links = [['fuseCtl', 'cBat+'], ['cBat+', 'cLoad+'], ['cLoad+', 'cPv+'], ['cBat-', 'usbG']];
+  if (st.batt) links.push(['bat+', 'fuseBat'], ['bat-', 'cBat-']);
+  if (st.fuse && !st.blown) links.push(['fuseBat', 'fuseCtl']);
+  if (st.load) links.push(['cLoad+', 'fan+'], ['cLoad+', 'dcIn+'], ['cLoad-', 'fan-'], ['cLoad-', 'dcIn-']);
+  if (st.pv) links.push(['pnl+', 'cPv+'], ['pnl-', 'cPv-']);
+  const parent = {}, find = x => parent[x] && parent[x] !== x ? (parent[x] = find(parent[x])) : x;
+  links.forEach(([x, y]) => { const rx = find(x), ry = find(y); if (rx !== ry) parent[rx] = ry; });
+  if (find(a) === find(b)) return 0.05;
+  const pair = new Set([find(a), find(b)]);
+  if (pair.has(find('fan+')) && pair.has(find('fan-'))) return 14;
+  return Infinity;
+}
+
+const pairOf = (e, a, b) => (e.redNode === a && e.blackNode === b) || (e.redNode === b && e.blackNode === a);
+const DOWNSTREAM = ['fuseCtl', 'cBat+', 'cLoad+', 'cPv+', 'fan+', 'dcIn+', 'pnl+'];
+
+Multimeter.setModel({ nets: meterNets, resistance: meterR });
+Multimeter.on(e => {
+  if (e.type === 'reading') {
+    log(`📟 ${e.text} (${e.knob}${e.knob === 'V' || e.knob === 'A' ? (e.ac ? ' AC' : ' DC') : ''}) red: ${e.red}, black: ${e.black}`);
+    const vdc = e.knob === 'V' && !e.ac;
+    if (vdc && pairOf(e, 'bat+', 'bat-')) {
+      if (!st.batt && e.value >= 12.6) tick('battv');
+      if (!st.batt && Math.abs(e.value) < 12.6) log('Below 12.6V before connecting. If the battery is new, show it to the shop.', 'w');
+      if (st.t >= 1080) tick('evening');
+      if (e.value < 0) log('Minus sign = probes reversed. Red on +, black on −.', 'w');
+    }
+    if (vdc && (pairOf(e, 'pnl+', 'pnl-') || pairOf(e, 'cPv+', 'cPv-'))) {
+      if (!st.pv && Math.abs(e.value) >= 22) { tick('voc'); log('That is Voc (label 24.5V). A cold morning can push it above 25V.'); }
+      if (st.pv && Math.abs(e.value) < 16 && Math.abs(e.value) > 5) log('This is not Voc: PWM pulled the panel down to the battery voltage. Disconnect the panel to see Voc.', 'w');
+    }
+    if (e.knob === 'A' && !e.ac && pairOf(e, 'pnl+', 'pnl-') && Math.abs(e.value) >= 2.3) { tick('isc'); log('Isc measured. Move the red plug back to VΩmA right away!', 'w'); }
+    if (e.knob === 'A' && !e.ac && pairOf(e, 'pnl+', 'pnl-') && Math.abs(e.value) < 2.3 && Math.abs(e.value) > 0.01) log('Weak sun. Measure Isc again around noon.');
+  }
+  if (e.type === 'short') {
+    const down = [e.redNode, e.blackNode].some(k => DOWNSTREAM.includes(k));
+    log(`💥 SHORT! ~${Math.round(e.amps)}A through the meter's 10A socket (~0Ω). Sparks, hot probes, the meter fuse blew.`, 'e');
+    if (down && st.fuse && !st.blown && st.batt) { st.blown = true; st.fuse = false; log('The system 10A fuse blew too: the short was downstream of it. That is its job.', 'e'); render(); }
+  }
+  if (e.type === 'fuse-mA') log('💥 mA fuse blown: big current through the VΩmA socket. Current goes through 10A only.', 'e');
+  if (e.type === 'ohm-live') log('Ω on a live circuit reads garbage and can damage the meter. Power off first.', 'w');
+  if (e.type === 'open') select('meter');
+});
+
+function meterTo(knob, ac, socket, red, black) {
+  Multimeter.set({ knob, ac, socket });
+  Multimeter.attach('red', red); Multimeter.attach('black', black);
+  select('meter');
+}
+
+const actions = {
+  bFuse() {
+    if (st.blown) return log('The fuse is blown. Use "Try a mistake → Replace the fuse".', 'w');
+    st.fuse = !st.fuse;
+    log(st.fuse ? 'Fuse inserted.' : 'Fuse pulled. The battery is now isolated from the circuit.');
+    if (st.fuse && !st.batt) log('The battery wire is not connected yet, so the fuse does nothing.');
+  },
+  bBatt() {
+    if (st.batt) {
+      if (st.pv) log('The panel is still connected! Disconnect order: Load → Panel → Battery. Battery last.', 'w');
+      st.batt = false; log('Battery disconnected.');
+    } else {
+      if (st.fuse) log('The fuse was already in. In real life that can spark; connecting with the fuse out is safer.', 'w');
+      st.batt = true; log('Battery connected to the ▮ terminals (red +, black −).');
+    }
+  },
+  bSet() {
+    if (!st.mode) return log('The controller is off. Power it from the battery + fuse first.', 'w');
+    if (st.mode === '24V') return log('Settings are pointless in 24V mode. Reset in the right order first.', 'e');
+    st.set = !st.set;
+    if (st.set) { log('Settings: battery type SLD, LVD 12.0V, reconnect 12.6V.'); tick('settings'); }
+    else log('Settings back to default (LVD ~10.7V). The battery will be drained far too low.', 'w');
+  },
+  bPv() {
+    st.pv = !st.pv;
+    if (st.pv && !(st.batt && st.fuse && !st.blown)) log('Panel connected without the battery! The controller may detect the wrong system voltage.', 'w');
+    else log(st.pv ? 'Panel connected to the ☀ terminals.' : 'Panel disconnected.');
+  },
+  bLoad() { st.load = !st.load; log(st.load ? 'Load connected to the 💡 terminals (fan + DC-DC → router).' : 'Load disconnected.'); },
+  aFan() { st.fan = !st.fan; if (st.fan && !st.load) log('Fan switched on, but the LOAD terminals are not connected.', 'w'); },
+  aUsb() { st.usb = !st.usb; },
+  aRouter() { st.router = !st.router; if (st.router && !st.load) log('Router switched on, but the LOAD terminals are not connected.', 'w'); },
+  mBatt() { meterTo('V', false, 'VmA', 'bat-pos', 'bat-neg'); log('🔧 Meter: V, DC, red in VΩmA. Red on battery +, black on −.'); },
+  mVoc() {
+    if (st.pv) log('The panel is connected, so this will read the battery voltage, not Voc. Disconnect the panel to see Voc.', 'w');
+    meterTo('V', false, 'VmA', 'pnl-pos', 'pnl-neg'); log('🔧 Meter: V, DC on the panel MC4 leads.');
+  },
+  mIsc() {
+    if (st.pv) log('Isc is measured on the disconnected panel. Disconnect the panel first for a clean reading.', 'w');
+    meterTo('A', false, '10A', 'pnl-pos', 'pnl-neg'); log('🔧 Meter: A, DC, red in 10A, across the panel MC4 leads. Only the panel, never the battery!');
+  },
+  mLoad() { meterTo('V', false, 'VmA', 'ctl-ld-p', 'ctl-ld-n'); log('🔧 Meter: V, DC on LOAD+ / LOAD−. 0V means the load output is off (LVD or not powered).'); },
+  oPol() {
+    if (st.batt) return log('The battery is already connected. Disconnect it first to connect it reversed.', 'w');
+    if (st.fuse) { st.blown = true; st.fuse = false; log('💥 Reversed polarity! Reverse current blew the fuse. The fuse saved the controller.', 'e'); }
+    else log('Reversed polarity, but the fuse was out, so no current flowed. That is why the fuse goes in last.', 'w');
+  },
+  o10A() { meterTo('V', false, '10A', 'bat-pos', 'bat-neg'); },
+  oSwap() {
+    if (!st.blown) return log('The fuse is fine, no need to replace it.');
+    st.blown = false; st.batt = false; log('New 10A fuse placed in the holder (not inserted). Reconnect the battery with the right polarity.');
+  },
+  oReset() {
+    Object.assign(st, { batt: false, fuse: false, blown: false, pv: false, load: false, set: false, mode: null, lvd: false });
+    log('Everything disconnected. Controller off. Start again: battery → fuse → settings → panel → load.');
+  },
+};
+
+function bindUI() {
+  ['bFuse', 'bBatt', 'bSet', 'bPv', 'bLoad', 'aFan', 'aUsb', 'aRouter'].forEach(id => $(id).onclick = () => { actions[id](); render(); });
+  document.querySelectorAll('[data-menu]').forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const m = $(b.dataset.menu), open = m.classList.contains('open');
+    document.querySelectorAll('.menu').forEach(x => x.classList.remove('open'));
+    m.classList.toggle('open', !open);
+  });
+  document.querySelectorAll('[data-act]').forEach(b => b.onclick = () => { actions[b.dataset.act](); b.closest('.menu').classList.remove('open'); render(); });
+  document.addEventListener('click', () => document.querySelectorAll('.menu').forEach(x => x.classList.remove('open')));
+  $('cTime').oninput = e => { st.t = +e.target.value; render(); };
+  $('cWx').onchange = e => { st.wx = +e.target.value; render(); };
+  $('cSpeed').onchange = e => { st.speed = +e.target.value; };
+  $('cLvd').onchange = e => {
+    st.lvdMode = e.target.value;
+    if (st.lvdMode === 'off') { st.lvd = false; log('LVD off: the load runs until the battery is completely empty.', 'w'); }
+    else log(`LVD set to ${st.lvdMode === 'auto' ? (st.set ? '12.0V' : '~10.7V default') : '11.8V'}.`);
+    render();
+  };
+  $('cPlay').onclick = () => { st.playing = !st.playing; $('cPlay').textContent = st.playing ? '❚❚' : '▶'; };
+  $('cWob').oninput = e => $('wobMap').setAttribute('scale', e.target.value);
+
+  const sw = [['#2f2f33', 'Exide'], ['#e2553f', 'tomato'], ['#e0a72c', 'mustard'], ['#7cc6a4', 'mint'], ['#3a5bd0', 'cobalt'], ['#eeb3b0', 'blush']];
+  $('cSw').innerHTML = sw.map(([h, n]) => `<i class="sw${h === st.color ? ' on' : ''}" title="${n}" data-c="${h}" style="background:${h}"></i>`).join('');
+  $('cSw').querySelectorAll('.sw').forEach(el => el.onclick = () => {
+    st.color = el.dataset.c; $('cSw').querySelectorAll('.sw').forEach(x => x.classList.toggle('on', x === el)); build(); render();
+  });
+
+  $('chips').innerHTML = Object.entries(PARTS).map(([id, p]) => `<button class="chip" data-part="${id}">${p.name}</button>`).join('');
+  $('chips').querySelectorAll('.chip').forEach(ch => ch.onclick = () => select(ch.dataset.part));
+}
+
+const QUIZ = [
+  ['You connect the panel to the controller before the battery, at noon. What is the risk?',
+    ['The controller may detect a 24V system', 'The panel will burn', 'Nothing, order does not matter'], 0,
+    'It sees the panel\'s ~22–24V and auto-detects 24V. Try it in the figure.'],
+  ['55W panel, but only ~35W through the PWM controller. Why?',
+    ['The panel is faulty', 'PWM runs the panel at the battery\'s ~13V, not at 21V', 'The wire is too thin'], 1,
+    '13V × 2.62A ≈ 34W. An MPPT controller recovers this difference.'],
+  ['Where does the DC-DC converter\'s IN− go?',
+    ['Battery −', 'Panel −', 'Controller LOAD −'], 2,
+    'Many PWM controllers switch the negative side. On battery − the LVD will not protect it.'],
+  ['With the fan off for 1 hour, the battery shows 12.2V. Meaning?',
+    ['~50%, switch the loads off now', 'Fully charged', 'Battery is dead'], 0,
+    '12.7V ≈ 100%, 12.4V ≈ 75%, 12.2V ≈ 50%. Below this the SMF battery\'s life drops.'],
+  ['The red probe is in the 10A socket and you touch the battery terminals. What happens?',
+    ['You see the battery current', 'Short circuit', 'You see the voltage'], 1,
+    'The 10A socket is ~0Ω. Voltage always goes through the VΩmA socket.'],
+];
+function renderQuiz() {
+  $('quiz').innerHTML = QUIZ.map(([q, opts], i) => `<div class="q"><p>${i + 1}. ${q}</p>${opts.map((o, j) => `<button class="chip" data-q="${i}" data-o="${j}">${o}</button>`).join('')}<div class="ans" id="ans${i}"></div></div>`).join('');
+  $('quiz').querySelectorAll('[data-q]').forEach(b => b.onclick = () => {
+    const [, , right, why] = QUIZ[+b.dataset.q], ok = +b.dataset.o === right;
+    b.classList.add(ok ? 'right' : 'wrong');
+    $('ans' + b.dataset.q).textContent = (ok ? '✓ Right. ' : '✗ No. ') + why;
+  });
+}
+function renderCheck() { $('check').innerHTML = CHECK.map(([k, t]) => `<li class="${done.has(k) ? 'done' : ''}">${t}</li>`).join(''); }
+
+build(); bindUI(); renderQuiz(); renderCheck();
+log('Solar Bench ready. New battery (~95%), fuse out. Press M for the multimeter.');
+render();
+setInterval(() => { if (st.playing) { step(st.speed / 5); render(); } }, 200);
+</script>
+</body>
+</html>

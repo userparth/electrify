@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solar Bench — Fig. 07 DC-DC + router</title>
+<link rel="stylesheet" href="bench.css">
+<style>
+.stats{grid-template-columns:repeat(5,auto)}
+.stat b{font-size:16px;white-space:nowrap}
+.ctl output{float:right;font-size:11px;font-weight:700}
+.blink{animation:blink .6s steps(2) infinite}
+@keyframes blink{50%{opacity:.15}}
+.pol{display:flex;align-items:center;gap:10px;margin-top:6px}
+.pol svg{width:150px;height:44px}
+</style>
+</head>
+<body>
+<div class="app">
+<aside id="side" data-cur="07"></aside>
+<script src="bench.js"></script>
+<script src="kit.js"></script>
+<script src="components/multimeter.js"></script>
+
+<main>
+  <div class="head">
+    <div>
+      <h2>Fig. 07 — DC-DC + router</h2>
+      <div class="kicker">LOAD → 2A fuse → buck-boost → barrel 5.5×2.1 → WiFi router</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Battery</span><b id="sBat">—</b></div>
+      <div class="stat"><span>Mode</span><b id="sMode">—</b></div>
+      <div class="stat"><span>Output</span><b id="sOut">—</b></div>
+      <div class="stat"><span>Router</span><b id="sRouter">—</b></div>
+      <div class="stat"><span>From battery</span><b id="sAh">—</b></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="actions">
+      <button class="btn" id="bMeter">Multimeter: measure OUT</button>
+      <button class="btn" id="bPlug">Plug polarity check</button>
+      <button class="btn" id="bRouter">Plug in router</button>
+      <button class="btn" id="bNeg">IN− : on controller LOAD−</button>
+      <button class="btn" id="bCompare">Compare DC vs inverter</button>
+      <div class="dd">
+        <button class="btn warn" data-menu="mOops">Try a mistake ▾</button>
+        <div class="menu" id="mOops">
+          <button data-act="negBatt">Connect IN− to battery −</button>
+          <button data-act="swap">Wire the barrel backwards (centre −)</button>
+          <button data-act="trim15">Turn the trim pot up to 15V</button>
+          <button data-act="short">OUT wires touch each other</button>
+          <button data-act="fuse">Replace the 2A fuse</button>
+          <button data-act="fix">Fix everything</button>
+        </div>
+      </div>
+      <div class="hint" id="hint"></div>
+    </div>
+    <svg id="fig" viewBox="0 20 900 585" aria-label="Isometric DC-DC converter and router"></svg>
+  </div>
+
+  <div class="controls">
+    <div class="ctl"><span>Battery voltage <output id="oBat"></output></span><input type="range" id="cBat" min="11" max="14.4" step="0.05" value="12.8"></div>
+    <div class="ctl"><span>Trim pot (output set) <output id="oTrim"></output></span><input type="range" id="cTrim" min="3" max="15" step="0.05" value="12"></div>
+    <div class="ctl"><span>Converter · router</span>
+      <select id="cConv"><option value="bb">Buck-boost (8–40V in)</option><option value="lm">LM2596 buck</option></select>
+      <select id="cRouter"><option value="r12p">Router 12V, centre +</option><option value="r9p">Router 9V, centre +</option><option value="r5p">Router 5V, centre +</option><option value="r12n">Router 12V, centre −</option></select>
+    </div>
+    <div class="ctl"><span>Hand-drawn wobble <output id="oWob"></output></span><input type="range" id="cWob" min="0" max="6" step="0.5" value="2"></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h3>In this figure</h3>
+      <div class="note">The battery swings between 11V and 14.4V, but the router needs a fixed voltage. A buck-boost converter holds its output at the trim-pot setting whatever the input. Before plugging in the router, measure the output and the plug polarity with the 🔧 multimeter (press M, or use the buttons).</div>
+      <h3>Router adapter label</h3>
+      <div class="card"><div class="k" id="polName"></div><div class="pol"><svg id="polSvg" viewBox="0 0 150 44"></svg><div id="polTxt" style="font-size:12px"></div></div></div>
+      <h3>Selected part</h3>
+      <div class="card" id="partCard"><div class="k">Nothing selected</div>Click any part or label in the figure.</div>
+      <h3>Parts in this circuit</h3>
+      <div id="chips"></div>
+      <h3>DC vs inverter (router 24 hours)</h3>
+      <div class="card" id="cmpCard"></div>
+    </div>
+    <div>
+      <h3>Serial monitor (event log)</h3>
+      <div class="log" id="log"></div>
+      <h3>Check yourself</h3>
+      <div id="quiz"></div>
+      <h3>Practice task</h3>
+      <div class="note" style="margin-bottom:6px">Do these in the figure. Each step ticks itself. Use the same order on the real converter.</div>
+      <ul class="check" id="check"></ul>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+const { P, poly, box, line, path, faceY, faceZ } = iso(15, 440, 165);
+const RED = '#d6452f', BLK = '#262624';
+const ROUTERS = {
+  r12p: { v: 12, c: '+', n: 'Router 12V ⎓ 1A, centre +' },
+  r9p: { v: 9, c: '+', n: 'Router 9V ⎓ 0.6A, centre +' },
+  r5p: { v: 5, c: '+', n: 'Router 5V ⎓ 2A, centre +' },
+  r12n: { v: 12, c: '-', n: 'Router 12V ⎓ 1A, centre −' },
+};
+const EFF = { bb: 0.88, lm: 0.85 };
+const ROUTER_W = 7;
+const st = {
+  vbat: 12.8, trim: 12, conv: 'bb', router: 'r12p', inNeg: 'load', plugRev: false, plugged: false,
+  fuse: 'ok', lvd: false, dead: false, wob: 2, sel: null, seenLo: false, seenHi: false,
+};
+
+function calc() {
+  const r = ROUTERS[st.router];
+  const inOn = st.fuse === 'ok' && (!st.lvd || st.inNeg === 'batt');
+  const vin = inOn ? st.vbat - 0.12 : 0;
+  let vout = 0, mode = 'OFF';
+  if (inOn) {
+    if (st.conv === 'bb') { vout = st.trim; mode = vin > st.trim + 0.05 ? 'BUCK' : vin < st.trim - 0.05 ? 'BOOST' : 'PASS'; }
+    else { vout = Math.max(0, Math.min(st.trim, vin - 1.5)); mode = st.trim > vin - 1.5 ? 'DROPOUT' : 'BUCK'; }
+  }
+  const centre = st.plugRev ? -vout : vout;
+  const seen = r.c === '+' ? centre : -centre;
+  let rs = 'UNPLUGGED';
+  if (st.plugged) {
+    if (st.dead) rs = 'DEAD';
+    else if (vout === 0) rs = 'OFF';
+    else if (seen < 0) rs = 'ULTA';
+    else if (seen > r.v * 1.15) rs = 'OVERVOLT';
+    else if (seen < r.v * 0.88) rs = 'REBOOT';
+    else rs = 'ON';
+  }
+  const pOut = rs === 'ON' ? ROUTER_W : rs === 'REBOOT' ? 3 : 0;
+  const iin = vin > 0 ? (pOut / EFF[st.conv] + 0.1) / vin : 0;
+  return { r, inOn, vin, vout, mode, centre, rs, iin };
+}
+
+const PARTS = {
+  ctrl: { name: 'Controller LOAD terminal', rows: [['What', '💡 LOAD output, with LVD'], ['LVD', 'Cuts at 11.8V, back at 12.6V (doc: 11.8–12.0V)'], ['Switching', 'Many PWM controllers switch LOAD on the negative (−) side'], ['Meaning', 'LOAD+ is always tied to battery+']] },
+  batt: { name: 'Battery 12V 26Ah', rows: [['Range', '~11V (empty) to 14.4V (charging)'], ['Careful', 'Never connect the converter IN− to battery −']] },
+  fuse: { name: 'Fuse 2A', rows: [['Where', 'Between LOAD+ and converter IN+'], ['Why', 'The router draws ~0.6A; on a short the 2A fuse blows, not the wire'], ['Part', 'Inline holder + 2A fuse, ₹100–150']] },
+  dcdc: { name: 'Buck-boost converter', rows: [['Input', '8–40V'], ['Output', 'Fixed 12V (set by trim pot), 2–3A'], ['Buck', 'Input > output: steps voltage down'], ['Boost', 'Input < output: steps voltage up'], ['Efficiency', '~85–90% (typical)'], ['Price', '₹250–500']] },
+  lm: { name: 'LM2596 buck', rows: [['Type', 'Step-down (buck) only'], ['Dropout', 'Output can only reach ~1.5V below input (typical)'], ['When', 'Fine for 9V or 5V routers, not for 12V'], ['Set', 'Turn the trim pot while watching the multimeter']] },
+  trim: { name: 'Trim pot', rows: [['What', 'Small multi-turn potentiometer'], ['Job', 'Sets the output voltage'], ['Tip', 'Set it before connecting the router. Clockwise usually raises voltage (depends on the module)']] },
+  barrel: { name: 'Barrel jack 5.5×2.1 mm', rows: [['Outside (sleeve)', 'Usually −'], ['Inside (centre pin)', 'Usually +'], ['Symbol', '⊖–◉–⊕ = centre positive'], ['Check', 'Red probe inside, black outside. Positive reading = centre +']] },
+  router: { name: 'WiFi router', rows: [['Power', '6–8W'], ['From battery', '~0.5–0.65Ah / hour'], ['Label', 'Check the adapter for Output __V __A and polarity (open item in the doc)'], ['Tip', 'Better switched off at night']] },
+  meter: { name: 'Multimeter', rows: [['Mode', 'V DC, red VΩmA, black COM'], ['Measure OUT', 'Before the router: 12V ± 0.3V'], ['Measure plug', 'A minus sign means centre negative'], ['Open', 'Press M or the 🔧 button; drag probes onto the dots']] },
+};
+const select = makeParts(PARTS, id => { st.sel = id; render(); });
+
+const log = makeLog();
+const tick = makeChecklist([
+  ['measure', 'Measured OUT before plugging in: router voltage ± 0.3V'],
+  ['polarity', 'Checked plug polarity with the multimeter, matches the router'],
+  ['buckboost', 'Saw a fixed 12V output at both battery ≤12.0V and ≥14.0V'],
+  ['boost', 'Saw BOOST mode (battery below output)'],
+  ['lvd', 'Saw the router switch off at LVD (IN− on LOAD−)'],
+  ['bypass', 'Saw the LVD bypass with IN− on battery −'],
+  ['lm', 'Ran a 5V or 9V router from an LM2596'],
+  ['compare', 'Compared DC vs inverter Ah'],
+], () => log('🎉 Fig. 07 practice task complete!'));
+
+function track(c) {
+  if (st.vbat < 11.8 && !st.lvd) { st.lvd = true; log(`Battery ${st.vbat.toFixed(2)}V < 11.8V: the controller cut LOAD.`, 'w'); }
+  if (st.vbat >= 12.6 && st.lvd) { st.lvd = false; log('Battery at 12.6V: LOAD back on.'); }
+  const c2 = calc();
+  if (c2.mode === 'BOOST') tick('boost');
+  if (st.conv === 'bb' && c2.inOn && Math.abs(c2.vout - 12) <= 0.3) {
+    if (st.vbat <= 12.0) st.seenLo = true;
+    if (st.vbat >= 14.0) st.seenHi = true;
+    if (st.seenLo && st.seenHi) tick('buckboost');
+  }
+  if (st.lvd && st.plugged && st.inNeg === 'load' && c2.rs === 'OFF') tick('lvd');
+  if (st.lvd && st.inNeg === 'batt' && c2.rs === 'ON') {
+    tick('bypass');
+    if (!st.warnedBypass) { st.warnedBypass = true; log('LVD BYPASS! The controller cut LOAD, but IN− is on battery −, so the router kept running. The battery can drop below 11V.', 'e'); }
+  } else st.warnedBypass = false;
+  if (st.conv === 'lm' && ['r5p', 'r9p'].includes(st.router) && c2.rs === 'ON') tick('lm');
+  if (c2.rs === 'OVERVOLT' && !st.dead) { st.dead = true; log(`💥 The router got ${c2.vout.toFixed(1)}V (needs ${c2.r.v}V). Its internal regulator burnt out.`, 'e'); }
+}
+
+function build(c) {
+  let o = wobbleDefs(st.wob) + '<g filter="url(#wob)">';
+  o += box(0, 0, -0.8, 34, 20, 0.8, '#e6dcc6');
+
+  o += box(2, 2, 0, 6, 4, 4.5, '#2f2f33', 'class="part" data-part="batt"');
+  o += box(3, 3.2, 4.5, 0.8, 0.8, 0.4, RED) + box(6.2, 3.2, 4.5, 0.8, 0.8, 0.4, '#222');
+  o += `<path class="wire" stroke="${RED}" d="${path([[3.4, 3.6, 4.9], [3.4, 3.6, 6.6], [4.4, 10.8, 6.6], [4.4, 10.8, 6]])}"/>`;
+  o += `<path class="wire" stroke="${BLK}" d="${path([[6.6, 3.6, 4.9], [6.6, 3.6, 6.6], [5.2, 10.8, 6.6], [5.2, 10.8, 6]])}"/>`;
+
+  o += `<g class="part" data-part="ctrl">` + box(2, 10, 0, 7, 1.6, 6, '#3a4256');
+  o += `<g transform="${faceY(2, 11.6, 0)}"><rect x="${1 * 15}" y="${-5.3 * 15}" width="${5 * 15}" height="${2.6 * 15}" rx="3" fill="${st.lvd ? '#f0a596' : '#b9dca0'}" class="ink"/>`;
+  o += `<text x="${3.5 * 15}" y="${-4.1 * 15}" text-anchor="middle" font-size="14" font-weight="700" fill="#1d2a18">${st.vbat.toFixed(1)}V</text>`;
+  o += `<text x="${3.5 * 15}" y="${-3.1 * 15}" text-anchor="middle" font-size="9" font-weight="700" fill="#1d2a18">${st.lvd ? 'LVD CUT' : 'LOAD ON'}</text>`;
+  [1, 2, 3, 4, 5, 6].forEach((u, i) => o += `<rect x="${u * 15 - 6}" y="${-1.8 * 15}" width="12" height="12" fill="${i % 2 ? '#222' : '#c84030'}" class="ink"/>`);
+  o += `<text x="${5.5 * 15}" y="${-2.1 * 15}" text-anchor="middle" font-size="10" fill="#e9e4d6">💡 LOAD</text></g></g>`;
+
+  const negPath = st.inNeg === 'load'
+    ? [[8, 11.6, 1.2], [8, 14.6, 0], [16.1, 14.6, 0], [16.1, 13.6, 0.9]]
+    : [[6.6, 3.6, 4.9], [6.6, 3.6, 7.2], [16.1, 9.5, 3.2], [16.1, 13.6, 0.9]];
+  o += `<path class="wire" stroke="${RED}" d="${path([[7, 11.6, 1.2], [7, 13.2, 0], [11.2, 13.2, 0]])}"/>`;
+  o += `<path class="wire" stroke="${RED}" d="${path([[12.8, 13.2, 0], [15.5, 13.2, 0], [15.5, 14.2, 0], [15.5, 13.6, 0.9]])}"/>`;
+  if (st.inNeg === 'load') o += `<path class="wire" stroke="${BLK}" d="${path(negPath)}"/>`;
+
+  o += `<g class="part" data-part="${st.conv === 'bb' ? 'dcdc' : 'lm'}">` + box(15, 10, 0, 6, 4, 0.5, st.conv === 'bb' ? '#2f8a55' : '#2c5aa0');
+  o += box(16.8, 10.6, 0.5, 1.6, 1.6, 1.3, '#3b3b3b') + box(18.9, 10.5, 0.5, 0.9, 0.9, 1.2, '#1f3a7a');
+  if (st.conv === 'bb') o += box(16.8, 12.6, 0.5, 0.7, 0.7, 0.9, '#1f3a7a');
+  o += box(15.2, 12.4, 0.5, 1.2, 1.2, 0.8, '#2a7bd6') + box(19.6, 12.4, 0.5, 1.2, 1.2, 0.8, '#2a7bd6');
+  o += `<g transform="${faceZ(15, 10, 0.5)}"><text x="${0.3 * 15}" y="${2.1 * 15}" font-size="9" font-weight="700" fill="#fff">IN</text><text x="${4.6 * 15}" y="${2.1 * 15}" font-size="9" font-weight="700" fill="#fff">OUT</text><text x="${1.2 * 15}" y="${3.7 * 15}" font-size="8" fill="#e8f5ec">${st.conv === 'bb' ? 'BUCK-BOOST' : 'LM2596'}</text></g></g>`;
+  o += `<g class="part" data-part="trim">` + box(18.2, 12.6, 0.5, 1, 0.9, 0.9, '#3a5bd0');
+  const [tx, ty] = P(18.7, 13.05, 1.4);
+  const ang = (st.trim - 3) / 12 * 300 - 150;
+  o += `<ellipse cx="${tx}" cy="${ty}" rx="5" ry="3" fill="#e0a72c" class="ink"/><line x1="${tx - 4 * Math.cos(ang * RAD)}" y1="${ty - 2 * Math.sin(ang * RAD)}" x2="${tx + 4 * Math.cos(ang * RAD)}" y2="${ty + 2 * Math.sin(ang * RAD)}" stroke="#1d1d1b" stroke-width="1.4"/></g>`;
+  if (st.inNeg === 'batt') o += `<path class="wire" stroke="#f3a08f" stroke-width="7" opacity=".6" d="${path(negPath)}"/><path class="wire" stroke="${BLK}" d="${path(negPath)}"/>`;
+
+  const [fx, fy] = P(12, 13.2, 0);
+  o += `<g class="part" data-part="fuse" transform="translate(${fx},${fy}) rotate(30)"><rect x="-13" y="-6" width="26" height="12" rx="3" fill="${st.fuse === 'ok' ? '#e8a33c' : '#9a9a9a'}" class="ink"/><text x="0" y="3.5" text-anchor="middle" font-size="8" font-weight="700">${st.fuse === 'ok' ? '2A' : '✕'}</text></g>`;
+
+  const plugA = st.plugRev ? BLK : RED, plugB = st.plugRev ? RED : BLK;
+  o += `<path class="wire" stroke="${RED}" d="${path([[19.9, 13.6, 0.9], [19.9, 15.2, 0], [22.6, 15.2, 0]])}"/>`;
+  o += `<path class="wire" stroke="${BLK}" d="${path([[20.5, 13.6, 0.9], [20.5, 14.6, 0], [22.6, 14.6, 0]])}"/>`;
+  o += `<g class="part" data-part="barrel">` + box(22.6, 14.3, 0, 1.6, 1.1, 0.7, '#1d1d1b');
+  const [px, py] = P(22.9, 14.85, 0.7);
+  o += `<circle cx="${px}" cy="${py}" r="4" fill="${plugB}" stroke="#888"/><circle cx="${px}" cy="${py}" r="1.6" fill="${plugA}"/></g>`;
+
+  o += `<g class="part" data-part="router">` + box(25, 7.5, 0, 6, 5, 1.6, '#eceae4');
+  [[26, 8.2], [30, 8.2]].forEach(([x, y]) => o += line([x, y, 1.6], [x, y, 5], 'class="ink" stroke-width="3"'));
+  const led = c.rs === 'ON' ? '#3fae66' : c.rs === 'REBOOT' ? '#e0a72c' : c.rs === 'DEAD' ? RED : '#999';
+  o += `<g transform="${faceY(25, 12.5, 0)}"><circle cx="${1.2 * 15}" cy="${-0.8 * 15}" r="4" fill="#1d1d1b"/>` + [2.6, 3.4, 4.2, 5].map((u, i) => `<circle class="${c.rs === 'REBOOT' ? 'blink' : ''}" cx="${u * 15}" cy="${-0.8 * 15}" r="2.6" fill="${i === 0 || c.rs === 'ON' ? led : '#999'}"/>`).join('') + `</g></g>`;
+  o += st.plugged
+    ? `<path class="wire" stroke="#555" d="${path([[24.2, 14.85, 0.35], [26.2, 14.85, 0], [26.2, 12.5, 0.75]])}"/>`
+    : `<path class="wire off" stroke="#555" d="${path([[24.2, 14.85, 0.35], [25.2, 16.2, 0], [27, 16.4, 0]])}"/>`;
+
+  o += `</g>` + anchors();
+
+  const L = (k, at, dx, dy, t) => { const [ax, ay] = P(...at); return pill(ax + dx, ay + dy, t, k, ax, ay, st.sel); };
+  o += L('ctrl', [7.5, 11.6, 1.2], -40, 80, 'CONTROLLER · LOAD');
+  o += L('batt', [8, 2, 4.5], 40, -40, 'BATTERY 12V');
+  o += L('fuse', [12, 13.2, 0], 40, 70, 'FUSE 2A');
+  o += L(st.conv === 'bb' ? 'dcdc' : 'lm', [17.5, 10, 0.5], 10, -70, st.conv === 'bb' ? 'BUCK-BOOST 12V' : 'LM2596 BUCK');
+  o += L('trim', [18.7, 13.05, 1.4], 80, -60, `TRIM POT ${st.trim.toFixed(1)}V`);
+  o += L('barrel', [23.4, 14.85, 0.7], 0, 70, 'BARREL 5.5×2.1');
+  o += L('router', [28, 7.5, 1.6], 50, -50, 'WIFI ROUTER');
+  if (st.inNeg === 'batt') o += L('ctrl', [11, 6, 5.2], 150, 10, 'IN− ON BATTERY − (WRONG)');
+  return o;
+}
+
+function drawPolarity() {
+  const r = ROUTERS[st.router], cp = r.c === '+';
+  $('polName').textContent = r.n;
+  const sym = (x, s) => `<circle cx="${x}" cy="22" r="10" fill="none" stroke="#1d1d1b" stroke-width="1.5"/><text x="${x}" y="27" text-anchor="middle" font-size="14" font-weight="700">${s}</text>`;
+  $('polSvg').innerHTML = sym(18, cp ? '−' : '+') + `<line x1="28" y1="22" x2="58" y2="22" stroke="#1d1d1b" stroke-width="1.5"/><circle cx="75" cy="22" r="13" fill="none" stroke="#1d1d1b" stroke-width="1.5"/><circle cx="75" cy="22" r="4" fill="#1d1d1b"/><path d="M75,9 A13,13 0 0 0 62,22" fill="none" stroke="#fbf8f1" stroke-width="4"/><line x1="79" y1="22" x2="122" y2="22" stroke="#1d1d1b" stroke-width="1.5"/>` + sym(132, cp ? '+' : '−');
+  $('polTxt').textContent = cp ? 'Centre pin (the middle dot) = +, sleeve = −. This is the most common.' : 'Centre negative! Rare. The plug must be wired the other way round.';
+}
+
+function drawCompare() {
+  const dc = (ROUTER_W / EFF.bb + 0.1) / (st.vbat - 0.12), inv = (ROUTER_W / 0.8 + 5) / 0.9 / st.vbat;
+  $('cmpCard').innerHTML = `<table><tr><td>DC-DC route</td><td>${dc.toFixed(2)}A → ~${(dc * 24).toFixed(1)}Ah/day</td></tr>`
+    + `<tr><td>Inverter route</td><td>${inv.toFixed(2)}A → ~${(inv * 24).toFixed(1)}Ah/day</td></tr>`
+    + `<tr><td>Difference</td><td>Inverter uses ~${Math.round((inv / dc - 1) * 100)}% more (4–7W idle + adapter loss)</td></tr>`
+    + `<tr><td>Budget</td><td>~10Ah usable per day. 24 hr router is borderline; switch it off at night.</td></tr></table>`;
+  return { dc, inv };
+}
+
+function render() {
+  const c = calc();
+  $('fig').innerHTML = build(c);
+  $('sBat').textContent = `${st.vbat.toFixed(2)}V${st.lvd ? ' LVD' : ''}`;
+  $('sBat').className = st.lvd ? 'bad' : '';
+  $('sMode').textContent = c.mode;
+  $('sMode').className = c.mode === 'DROPOUT' ? 'bad' : '';
+  $('sOut').textContent = c.inOn ? `${c.vout.toFixed(2)}V` : '0V';
+  $('sRouter').textContent = c.rs;
+  $('sRouter').className = ['ULTA', 'OVERVOLT', 'DEAD', 'REBOOT'].includes(c.rs) ? 'bad' : '';
+  $('sAh').textContent = `${c.iin.toFixed(2)} Ah/hr`;
+  $('oBat').textContent = st.vbat.toFixed(2) + 'V'; $('oTrim').textContent = st.trim.toFixed(2) + 'V'; $('oWob').textContent = st.wob;
+  $('cBat').value = st.vbat; $('cTrim').value = st.trim;
+  $('bRouter').textContent = st.plugged ? 'Unplug router' : 'Plug in router';
+  $('bRouter').classList.toggle('on', st.plugged);
+  $('bNeg').textContent = st.inNeg === 'load' ? 'IN− : on controller LOAD−' : 'IN− : on battery − (wrong)';
+  $('bNeg').classList.toggle('warn', st.inNeg === 'batt');
+  drawPolarity(); drawCompare();
+
+  let h = '', bad = false;
+  if (st.fuse !== 'ok') { h = '2A fuse blown. Fix the short, then replace the fuse.'; bad = true; }
+  else if (c.rs === 'DEAD') { h = 'Router burnt. Use "Fix everything" for a new one, and measure first.'; bad = true; }
+  else if (c.rs === 'ULTA') { h = 'Polarity reversed! The router did not start. Match the plug wiring to the router label.'; bad = true; }
+  else if (c.rs === 'REBOOT') { h = 'Voltage too low, the router keeps rebooting.'; bad = true; }
+  else if (st.inNeg === 'batt') { h = 'IN− is on battery −. LVD cannot cut the router.'; bad = true; }
+  else if (!st.plugged) h = 'Before plugging in the router: measure OUT and check plug polarity.';
+  else if (st.lvd) h = 'LVD cut LOAD, router off. That is the correct behaviour: the battery is protected.';
+  else h = 'Move the battery slider: the output stays fixed, the mode switches BUCK/BOOST.';
+  $('hint').textContent = h; $('hint').classList.toggle('bad', bad);
+}
+
+const actions = {
+  negBatt() { st.inNeg = 'batt'; log('IN− connected to battery −. Everything looks normal, until LVD.', 'w'); },
+  swap() { st.plugRev = !st.plugRev; log(st.plugRev ? 'Barrel wired backwards: centre is now −.' : 'Barrel wiring restored: centre +.', st.plugRev ? 'w' : ''); },
+  trim15() { st.trim = 15; log('Trim pot turned up: output is now 15V.', 'w'); },
+  short() {
+    if (st.fuse !== 'ok') return log('The fuse is already blown.');
+    if (!calc().inOn) return log('No power on the converter, the short did nothing.');
+    st.fuse = 'blown'; log('💥 OUT short! The converter hit its current limit, input current rose, the 2A fuse blew. The wire survived.', 'e');
+  },
+  fuse() { if (st.fuse === 'ok') return log('The fuse is fine.'); st.fuse = 'ok'; log('New 2A fuse fitted.'); },
+  fix() {
+    Object.assign(st, { inNeg: 'load', plugRev: false, dead: false, fuse: 'ok', plugged: false });
+    st.trim = st.conv === 'bb' ? 12 : 9;
+    log(`All fixed: IN− on LOAD−, wiring centre +, trim ${st.trim}V, router unplugged. New router if the old one burnt.`);
+  },
+};
+
+function anchorDot(id, node, label, pt, r = 4.5) {
+  const [x, y] = P(...pt);
+  return `<circle data-anchor="${id}" data-node="${node}" data-label="${label}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="#f2efe7" stroke="#1d1d1b" stroke-width="1.4"/>`;
+}
+function anchors() {
+  return anchorDot('d-bat-pos', 'batP', 'Battery +', [3.4, 3.6, 5]) + anchorDot('d-bat-neg', 'batN', 'Battery −', [6.6, 3.6, 5])
+    + anchorDot('d-load-pos', 'loadP', 'Controller LOAD +', [7, 11.6, 1.3]) + anchorDot('d-load-neg', 'loadN', 'Controller LOAD −', [8, 11.6, 1.3])
+    + anchorDot('d-fuse-a', 'loadP', 'Fuse, LOAD side', [11.2, 13.2, 0.2]) + anchorDot('d-fuse-b', 'inP', 'Fuse, converter side', [12.8, 13.2, 0.2])
+    + anchorDot('d-in-pos', 'inP', 'Converter IN +', [15.4, 13.4, 1.3]) + anchorDot('d-in-neg', 'inN', 'Converter IN −', [16.2, 12.6, 1.3])
+    + anchorDot('d-out-pos', 'outP', 'Converter OUT +', [19.8, 13.4, 1.3]) + anchorDot('d-out-neg', 'outN', 'Converter OUT −', [20.6, 12.6, 1.3])
+    + anchorDot('d-barrel-c', 'plugC', 'Barrel centre pin', [22.9, 14.85, 0.7], 2.6) + anchorDot('d-barrel-s', 'plugS', 'Barrel sleeve', [24.1, 14.5, 0.35]);
+}
+
+// Voltages relative to battery −; LOAD− floats up to LOAD+ through the converter when LVD opens the low-side switch.
+function nets() {
+  const c = calc(), vb = st.vbat, big = { g: 'sys', imax: 300 };
+  const loadN = st.lvd ? (st.inNeg === 'load' && st.fuse === 'ok' ? vb - 0.02 : null) : 0.05;
+  const inN = st.inNeg === 'load' ? loadN : 0;
+  const out = { batP: { ...big, v: vb }, batN: { ...big, v: 0 }, loadP: { ...big, v: vb } };
+  if (loadN != null) out.loadN = { g: 'sys', v: loadN, imax: 10 };
+  if (inN != null) {
+    out.inN = { g: 'sys', v: inN, imax: 2 };
+    out.inP = { g: 'sys', v: st.fuse === 'ok' ? vb - c.iin * 0.05 : inN, imax: 2 };
+    out.outN = { g: 'sys', v: inN, imax: 3 };
+    out.outP = { g: 'sys', v: inN + (c.inOn ? c.vout : 0), imax: 3 };
+    out.plugC = st.plugRev ? out.outN : out.outP;
+    out.plugS = st.plugRev ? out.outP : out.outN;
+  }
+  return out;
+}
+function resistance(a, b) {
+  const k = [a, b].sort().join('|'), rev = st.plugRev;
+  const R = {
+    'inP|loadP': st.fuse === 'ok' ? 0.05 : Infinity, 'inN|loadN': st.inNeg === 'load' ? 0.02 : Infinity, 'inN|outN': 0.02,
+    'outP|plugC': rev ? Infinity : 0.03, 'outN|plugS': rev ? Infinity : 0.03, 'outP|plugS': rev ? 0.03 : Infinity, 'outN|plugC': rev ? 0.03 : Infinity,
+  };
+  return R[k] ?? Infinity;
+}
+Multimeter.setModel({ nets, resistance });
+
+function onReading(e) {
+  if (e.type !== 'reading' || e.knob !== 'V' || e.ac) return;
+  const c = calc(), r = c.r, pair = (x, y) => (e.redNode === x && e.blackNode === y) || (e.redNode === y && e.blackNode === x);
+  if (pair('outP', 'outN')) {
+    log(`📟 OUT: ${e.text} (${st.conv === 'bb' ? 'buck-boost' : 'LM2596'}, mode ${c.mode})`);
+    if (!c.inOn) return log('No input on the converter (fuse or LVD).', 'w');
+    if (!st.plugged && Math.abs(Math.abs(e.value) - r.v) <= 0.3) { tick('measure'); log(`Within ±0.3V of the router's ${r.v}V. Now check the polarity.`); }
+    else if (Math.abs(Math.abs(e.value) - r.v) > 0.3) log(`The router needs ${r.v}V. Turn the trim pot until you see ${r.v}V ± 0.3V.`, 'w');
+  } else if (e.redNode === 'plugC' && e.blackNode === 'plugS') {
+    const v = e.value;
+    log(`📟 Plug: red inside, black outside → ${e.text}. ${v > 0.5 ? 'Positive: centre +.' : v < -0.5 ? 'Minus: centre −.' : 'Zero: no input.'}`);
+    if (Math.abs(v) > 0.5 && (v > 0) === (r.c === '+')) tick('polarity');
+    else if (Math.abs(v) > 0.5) log('The plug polarity does NOT match the router label!', 'e');
+  } else if (pair('loadP', 'loadN')) log(`📟 LOAD terminals: ${e.text}${st.lvd ? ' — LVD has opened the switch.' : '.'}`);
+  else if (pair('outN', 'batN') && Math.abs(e.value) > 5) log(`📟 OUT− vs battery −: ${e.text}. With LVD open, the "ground" floats up to battery +.`);
+}
+Multimeter.on(onReading);
+
+function probe(red, black) {
+  Multimeter.set({ knob: 'V', ac: false, socket: 'VmA' });
+  Multimeter.attach('red', red); Multimeter.attach('black', black);
+}
+
+$('bMeter').onclick = () => { probe('d-out-pos', 'd-out-neg'); log('Multimeter: V DC, red on OUT+, black on OUT−.'); };
+$('bPlug').onclick = () => { probe('d-barrel-c', 'd-barrel-s'); log('Multimeter: red inside the plug (centre), black on the outside (sleeve).'); };
+$('bRouter').onclick = () => {
+  st.plugged = !st.plugged;
+  const c = calc();
+  if (st.plugged) log(`Router plugged in → ${c.rs === 'ON' ? 'router on, LEDs lit' : c.rs}`, c.rs === 'ON' ? '' : 'w');
+  else log('Router unplugged.');
+  track(); render();
+};
+$('bNeg').onclick = () => { st.inNeg = st.inNeg === 'load' ? 'batt' : 'load'; log(st.inNeg === 'load' ? 'IN− back on controller LOAD−. LVD works again.' : 'IN− connected to battery − (wrong).', st.inNeg === 'load' ? '' : 'w'); track(); render(); };
+$('bCompare').onclick = () => { const { dc, inv } = drawCompare(); log(`Router ${ROUTER_W}W: DC-DC ${dc.toFixed(2)}A vs inverter ${inv.toFixed(2)}A. Over 16 hours: ${(dc * 16).toFixed(1)}Ah vs ${(inv * 16).toFixed(1)}Ah.`); tick('compare'); };
+bindMenus(actions, () => { track(); render(); });
+bindFigClicks($('fig'), select);
+$('cBat').oninput = e => { st.vbat = +e.target.value; track(); render(); };
+$('cTrim').oninput = e => { st.trim = +e.target.value; track(); render(); };
+$('cWob').oninput = e => { st.wob = +e.target.value; render(); };
+$('cConv').onchange = e => {
+  st.conv = e.target.value;
+  if (st.conv === 'lm') { st.trim = 11; log('LM2596 fitted. A new module is not preset: measure and turn the trim pot before the router.', 'w'); }
+  else { st.trim = 12; log('Buck-boost fitted, trim at 12V.'); }
+  track(); render();
+};
+$('cRouter').onchange = e => { st.router = e.target.value; log(`${ROUTERS[st.router].n}. Check the label voltage and polarity.`); track(); render(); };
+
+renderQuiz([
+  ['The battery is at 12.4V and the router needs 12V. Which mode is the buck-boost in?', ['BOOST', 'BUCK (steps down a little)', 'Does nothing'], 1, 'Input > output = buck. At 11.9V the same module boosts.'],
+  ['Why not an LM2596 for a 12V router?', ['It only gives 5V', 'It is a buck: from 12–12.4V in it cannot hold 12V out (dropout ~1.5V)', 'It runs too hot'], 1, 'A buck only steps down. LM2596 is fine for 9V/5V routers.'],
+  ['The converter IN− went to battery −. What breaks?', ['Nothing', 'LVD will not cut the router; deep discharge', 'Output doubles'], 1, 'Many PWM controllers switch LOAD on the − side. IN− always on LOAD−.'],
+  ['What does ⊖–◉–⊕ on an adapter mean?', ['Centre positive', 'Centre negative', 'AC output'], 0, 'The centre pin has the sign the middle dot is connected to.'],
+  ['Why is running the router from DC-DC better than an inverter?', ['An inverter burns 4–7W even idle, plus adapter loss', 'DC is just safer', 'The router runs faster on DC'], 0, 'The inverter route can use ~2× the Ah. Press compare in the figure.'],
+]);
+
+log('Buck-boost fitted, trim 12V. Router not connected yet. Measure OUT first (M opens the multimeter).');
+track(); render();
+</script>
+</body>
+</html>

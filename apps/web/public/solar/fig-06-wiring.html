@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solar Bench — Fig. 06 Wire + fuse</title>
+<link rel="stylesheet" href="bench.css">
+<style>
+.stats{grid-template-columns:repeat(5,auto)}
+.stat b{font-size:16px;white-space:nowrap}
+.ctl output{float:right;font-size:11px;font-weight:700}
+.step{cursor:pointer}
+.step rect{fill:#1d1d1b}
+.step text{fill:#fbf8f1;font:700 10px ui-monospace,Menlo,monospace}
+.step.bad rect{fill:#d6452f}
+</style>
+</head>
+<body>
+<div class="app">
+<aside id="side" data-cur="06"></aside>
+<script src="bench.js"></script>
+<script src="kit.js"></script>
+<script src="components/multimeter.js"></script>
+
+<main>
+  <div class="head">
+    <div>
+      <h2>Fig. 06 — Wire + fuse</h2>
+      <div class="kicker">sq mm · drop · heat · lug · ferrule · fuse · MC4</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Wire</span><b id="sWire">—</b></div>
+      <div class="stat"><span>Voltage drop</span><b id="sDrop">—</b></div>
+      <div class="stat"><span>Wire heat</span><b id="sHeat">—</b></div>
+      <div class="stat"><span>Loss</span><b id="sLoss">—</b></div>
+      <div class="stat"><span>Fuse</span><b id="sFuse">—</b></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="actions">
+      <button class="btn" id="bRight">Fit the section 8 wire</button>
+      <div class="dd">
+        <button class="btn" data-menu="mClose">Close-up ▾</button>
+        <div class="menu" id="mClose">
+          <button data-act="cLug">Ring lug crimp (battery terminal)</button>
+          <button data-act="cFer">Ferrule (screw terminal)</button>
+          <button data-act="cMc4">MC4 connector assembly</button>
+        </div>
+      </div>
+      <div class="dd">
+        <button class="btn" data-menu="mShort">Short circuit ▾</button>
+        <div class="menu" id="mShort">
+          <button data-act="sMid">Short in the middle (dropped spanner)</button>
+          <button data-act="sEnd">Short near the controller</button>
+          <button data-act="sFix">Clear short, replace wire/fuse</button>
+        </div>
+      </div>
+      <div class="dd">
+        <button class="btn warn" data-menu="mOops">Try a mistake ▾</button>
+        <div class="menu" id="mOops">
+          <button data-act="oThin">1 sq mm wire on the inverter (25A)</button>
+          <button data-act="oAl">Use aluminium wire</button>
+          <button data-act="oFar">Put the fuse near the controller</button>
+          <button data-act="oBig">30A fuse on 1.5 sq mm wire, 20A load</button>
+          <button data-act="oReset">Reset all</button>
+        </div>
+      </div>
+      <div class="hint" id="hint"></div>
+    </div>
+    <svg id="fig" viewBox="0 20 900 540" aria-label="Isometric wire run"></svg>
+  </div>
+
+  <div class="controls">
+    <div class="ctl"><span>Run (section 8)</span>
+      <select id="cRun"><option value="pv">Panel → controller</option><option value="bat" selected>Controller → battery</option><option value="load">Controller → fan</option><option value="inv">Battery → inverter (future)</option></select>
+    </div>
+    <div class="ctl"><span>Wire · material</span>
+      <select id="cSize"><option>1</option><option>1.5</option><option>2.5</option><option>4</option><option>6</option></select>
+      <select id="cMat"><option value="cu">Copper</option><option value="al">Aluminium</option></select>
+    </div>
+    <div class="ctl"><span>Current <output id="oI"></output></span><input type="range" id="cI" min="0" max="40" step="0.1" value="3"></div>
+    <div class="ctl"><span>Length (one way) <output id="oL"></output></span><input type="range" id="cL" min="0.5" max="20" step="0.5" value="1"></div>
+    <div class="ctl"><span>Fuse rating · position</span>
+      <select id="cFuse"><option value="0">None</option><option>2</option><option>5</option><option selected>10</option><option>20</option><option>30</option><option>40</option></select>
+      <select id="cPos"><option value="near">Near source</option><option value="far">Near load</option></select>
+    </div>
+    <div class="ctl"><span>Hand-drawn wobble <output id="oWob"></output></span><input type="range" id="cWob" min="0" max="6" step="0.5" value="2"></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h3>In this figure</h3>
+      <div class="note">A wire is a resistor too. Thin, long or aluminium wire drops voltage and makes heat. A bad joint (lug, ferrule, MC4) becomes the hottest spot. A fuse protects the wire, but only when it sits near the source and is rated below the wire. Open the 🔧 multimeter and measure the drop yourself: red on source +, black on load +.</div>
+      <h3>Section 8 table</h3>
+      <div class="card"><table>
+        <tr><td>Panel → controller</td><td>4 sq mm solar DC + MC4, 2.83A, up to 10 m</td></tr>
+        <tr><td>Controller → battery</td><td>2.5 sq mm Cu multi-strand, ~3A</td></tr>
+        <tr><td>Controller → fan</td><td>1–1.5 sq mm two-core, ~1A</td></tr>
+        <tr><td>Battery fuse</td><td>10A blade, near battery +</td></tr>
+        <tr><td>Inverter (future)</td><td>6 sq mm, 30–40A fuse</td></tr>
+      </table></div>
+      <h3>Selected part</h3>
+      <div class="card" id="partCard"><div class="k">Nothing selected</div>Click any part or label in the figure.</div>
+      <h3>Parts</h3>
+      <div id="chips"></div>
+    </div>
+    <div>
+      <h3>Serial monitor (event log)</h3>
+      <div class="log" id="log"></div>
+      <h3>Check yourself</h3>
+      <div id="quiz"></div>
+      <h3>Practice task</h3>
+      <div class="note" style="margin-bottom:6px">Do these in the figure. Each step ticks itself.</div>
+      <ul class="check" id="check"></ul>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+const I = iso(15, 400, 150), { P, poly, box, line } = I;
+const RHO = { cu: 0.0172, al: 0.0282 };
+// Typical single-core PVC in open air, approx; aluminium ~78% of copper.
+const AMP = { 1: 11, 1.5: 15, 2.5: 21, 4: 28, 6: 36 };
+const RUNS = {
+  pv: { name: 'Panel → controller', size: 4, i: 2.83, l: 10, v: 21, src: 'pv', fuse: 0, left: 'PANEL MC4 LEAD', right: 'CONTROLLER ☀' },
+  bat: { name: 'Controller → battery', size: 2.5, i: 3, l: 1, v: 12.8, src: 'batt', fuse: 10, left: 'BATTERY 12V', right: 'CONTROLLER ▮' },
+  load: { name: 'Controller → fan', size: 1.5, i: 0.85, l: 3, v: 12, src: 'ctrl', fuse: 0, left: 'CONTROLLER 💡', right: '12V DC FAN' },
+  inv: { name: 'Battery → inverter', size: 6, i: 25, l: 1, v: 12.5, src: 'batt', fuse: 40, left: 'BATTERY 12V', right: 'INVERTER 300W' },
+};
+const st = {
+  run: 'bat', size: 2.5, mat: 'cu', i: 3, l: 1, fuse: 10, pos: 'near', wob: 2,
+  blown: false, burnt: false, shortAt: null, lug: 'good', fer: 'good', mc4: 'good',
+  close: 'lug', step: 0, choice: null, seenRuns: new Set(['bat']), sel: null,
+};
+const log = makeLog();
+
+const FUSE_X = { near: 7, far: 21 }, SHORT_X = { mid: 14, end: 22.6 };
+const Y_POS = 12, Y_NEG = 12.8;
+
+const PARTS = {
+  wire: { name: 'Copper wire (multi-strand)', rows: [['Brands', 'Polycab, Havells, Finolex, KEI'], ['Rule', 'Copper only, never aluminium'], ['Resistance', 'R = 0.0172 × length(m) / area(mm²), both ways (out and back)'], ['Ampacity', 'Typical values in this model: 1→11A, 1.5→15A, 2.5→21A, 4→28A, 6→36A']] },
+  lug: { name: 'Ring lug (M5/M6)', rows: [['Where', 'On the battery bolt terminals'], ['Crimp', 'With a crimp tool. Squashed with pliers = loose = hot joint'], ['Doc', '₹20–40, get it crimped at the shop']] },
+  ferrule: { name: 'Ferrule (bootlace)', rows: [['Where', 'Controller screw terminals'], ['Why', 'Strands stay together, the screw grips properly'], ['Without', 'Twist tightly, not a single strand sticking out']] },
+  fuse: { name: 'Inline fuse holder', rows: [['Rating', 'Below the wire capacity, above the load'], ['Position', 'As close to the source (battery +) as possible'], ['Why close', 'A fuse only protects the wire after it'], ['Doc', '10A ATC/ATO, ₹130–160']] },
+  mc4: { name: 'MC4 connector', rows: [['Where', 'Panel leads and extension cable'], ['Assembly', 'Strip ~7 mm, crimp the pin, push until click, tighten gland'], ['Polarity', 'Check + with the multimeter before joining'], ['Bad', 'Half-seated pin = loose = arcing and heat']] },
+  term: { name: 'Screw terminal', rows: [['Where', 'Controller PV / BAT / LOAD'], ['Tip', 'Use ferrules, re-check tightness after a day']] },
+  shrink: { name: 'Heat-shrink', rows: [['Job', 'Covers the lug barrel and wire joint'], ['Colour', 'Red = +, black = −']] },
+};
+
+function calc() {
+  const run = RUNS[st.run];
+  const amp = AMP[st.size] * (st.mat === 'al' ? 0.78 : 1);
+  const rWire = RHO[st.mat] * 2 * st.l / st.size;
+  const rLug = run.src === 'batt' ? (st.lug === 'bad' ? 0.02 : 0.0005) : 0;
+  const rFer = st.fer === 'bad' ? 0.012 : 0.001;
+  const rMc4 = run.src === 'pv' ? (st.mc4 === 'bad' ? 0.05 : 0.002) : 0;
+  const flowing = !st.blown && !st.burnt;
+  const i = flowing ? st.i : 0;
+  const drop = i * (rWire + rLug + rFer + rMc4), pct = drop / run.v * 100;
+  const rise = 40 * (i / amp) ** 2;
+  const hot = { lug: i * i * rLug * 30, fer: i * i * rFer * 30, mc4: i * i * rMc4 * 30 };
+  return { run, amp, rWire, i, drop, pct, rise, loss: i * i * (rWire + rLug + rFer + rMc4), hot };
+}
+
+function heatColor(rise) {
+  if (st.burnt) return '#3a2a22';
+  if (rise < 8) return null;
+  return rise < 25 ? '#f2a03a' : rise < 45 ? '#e2553f' : '#ff3b1f';
+}
+
+function leftObj(run) {
+  if (run.src === 'pv') return line([3, 8, 4.6], [3, 8, 9], 'class="ink" stroke-width="2.5"') + line([7, 8, 4.6], [7, 8, 9], 'class="ink" stroke-width="2.5"')
+    + poly([P(1.5, 6.5, 10), P(8.5, 6.5, 10), P(8.5, 9.5, 7.5), P(1.5, 9.5, 7.5)], '#2c4a96') + box(2, 7, 0, 6, 3, 4.5, '#3b3b3b');
+  if (run.src === 'ctrl') return box(2, 7, 0, 6, 3, 4.5, '#3a4256');
+  return box(2, 7, 0, 6, 3, 4.5, '#2f2f33');
+}
+function rightObj(run) {
+  if (st.run === 'load') {
+    const [cx, cy] = P(25.5, 9, 6);
+    return box(24, 8, 0, 3, 2.5, 0.6, '#d8d2c4') + line([25.5, 9.2, 0.6], [25.5, 9.2, 4], 'class="ink" stroke-width="4"')
+      + `<ellipse cx="${cx}" cy="${cy}" rx="34" ry="40" fill="#efe9dc" class="ink"/><circle cx="${cx}" cy="${cy}" r="5" fill="#555"/>`;
+  }
+  return box(23, 8, 0, 5, 2.5, 5, st.run === 'inv' ? '#5a6b52' : '#3a4256');
+}
+
+function scene(c) {
+  const run = c.run, hc = heatColor(c.rise), w = 1.6 + Math.sqrt(st.size) * 1.7;
+  let o = wobbleDefs(st.wob) + `<g filter="url(#wob)">` + box(0, 0, -0.8, 30, 14.5, 0.8, '#e6dcc6');
+  o += `<g class="part" data-part="${run.src === 'pv' ? 'mc4' : 'lug'}">` + leftObj(run) + `</g>`;
+  o += `<g class="part" data-part="term">` + rightObj(run) + `</g>`;
+  const posPath = [[3.5, 9.4, 4.7], [3.5, 11, 4.7], [3.5, Y_POS, 0.15], [24.2, Y_POS, 0.15], [24.2, 11, 0.15], [24.2, 10.5, 1.4]];
+  const negPath = [[6.5, 9.4, 4.7], [6.5, 11, 4.7], [6.5, Y_NEG, 0.15], [26.4, Y_NEG, 0.15], [26.4, 11, 0.15], [26.4, 10.5, 1.4]];
+  if (st.run === 'load') { posPath.splice(-2, 2, [24.8, 11, 0.15], [24.8, 10.5, 0.3]); negPath.splice(-2, 2, [26, 11, 0.15], [26, 10.5, 0.3]); }
+  const wireCol = st.mat === 'al' ? '#b9bec4' : null;
+  [[negPath, '#262624'], [posPath, '#d6452f']].forEach(([p, col]) => {
+    if (hc) o += `<path d="${I.path(p)}" fill="none" stroke="${hc}" stroke-width="${w + 7}" stroke-linecap="round" stroke-linejoin="round" opacity="${st.burnt ? 1 : Math.min(0.9, c.rise / 45)}"/>`;
+    o += `<path class="part" data-part="wire" d="${I.path(p)}" fill="none" stroke="${st.burnt ? '#3a2a22' : col}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    if (wireCol) o += `<path d="${I.path(p)}" fill="none" stroke="${wireCol}" stroke-width="1.4" stroke-dasharray="2 4" pointer-events="none"/>`;
+  });
+  [[3.5, 9.4, 4.5, '#d6452f'], [6.5, 9.4, 4.5, '#222']].forEach(([x, y, z, col]) => o += `<g class="part" data-part="lug">` + box(x - 0.5, y - 0.5, z, 1, 1, 0.4, col) + `</g>`);
+  if (run.src === 'pv') {
+    [[11, Y_POS], [11, Y_NEG]].forEach(([x, y]) => o += `<g class="part" data-part="mc4">` + box(x, y - 0.35, 0, 1.6, 0.7, 0.7, '#2f2f2f') + `</g>`);
+  }
+  if (st.fuse > 0) {
+    const fx = FUSE_X[st.pos];
+    o += `<g class="part" data-part="fuse">` + box(fx - 0.9, Y_POS - 0.45, 0, 1.8, 0.9, 0.9, st.blown ? '#9a9a9a' : '#f0c13a') + `</g>`;
+    const [tx, ty] = P(fx, Y_POS + 0.45, 0.45);
+    o += `<text x="${tx}" y="${ty + 3}" font-size="8" font-weight="700" text-anchor="middle" transform="rotate(30 ${tx} ${ty})" pointer-events="none">${st.blown ? '✕' : st.fuse + 'A'}</text>`;
+  }
+  const glow = (pt, rise) => { if (rise < 12) return ''; const [x, y] = P(...pt); return `<circle cx="${x}" cy="${y}" r="${8 + Math.min(14, rise / 5)}" fill="#ff5a1f" opacity="${Math.min(0.75, rise / 60)}" pointer-events="none"/>`; };
+  o += glow([3.5, 9.4, 4.9], c.hot.lug) + glow([24.2, 10.5, 1.4], c.hot.fer) + glow([11.8, Y_POS, 0.4], c.hot.mc4);
+  if (c.rise > 45 || st.burnt) { for (let k = 0; k < 3; k++) { const [x, y] = P(10 + k * 5, Y_POS, 1); o += `<text x="${x}" y="${y - 10 - k * 4}" font-size="18" opacity=".7" pointer-events="none">💨</text>`; } }
+  if (st.shortAt) {
+    const [sx, sy] = P(SHORT_X[st.shortAt], (Y_POS + Y_NEG) / 2, 0.4);
+    o += `<rect x="${sx - 22}" y="${sy - 5}" width="44" height="10" rx="4" fill="#9aa1a7" class="ink" transform="rotate(-25 ${sx} ${sy})"/>`;
+    if (st.burnt) o += `<text x="${sx}" y="${sy - 14}" font-size="22" text-anchor="middle">🔥</text>`;
+  }
+  o += `</g>`;
+  const lp = (x, y, t, k, a) => pill(x, y, t, k, ...P(...a), st.sel);
+  o += lp(150, 420, run.left, run.src === 'pv' ? 'mc4' : 'lug', [3, 11, 2]);
+  o += lp(820, 260, run.right, 'term', [25.5, 10.5, 3]);
+  o += lp(400, 500, `${st.size} mm² ${st.mat === 'cu' ? 'COPPER' : 'ALUMINIUM'} · ${st.l} m`, 'wire', [16, Y_NEG, 0.15]);
+  if (st.fuse > 0) o += lp(st.pos === 'near' ? 260 : 650, st.pos === 'near' ? 470 : 470, `FUSE ${st.fuse}A`, 'fuse', [FUSE_X[st.pos], Y_POS, 0.9]);
+  if (run.src === 'pv') o += lp(270, 370, 'MC4 PAIR', 'mc4', [11.8, Y_NEG, 0.7]);
+  return o + anchors() + inset();
+}
+
+const END = { pos: [24.2, 10.5, 1.4], neg: [26.4, 10.5, 1.4] };
+function anchorDot(id, node, label, pt) {
+  const [x, y] = P(...pt);
+  return `<circle data-anchor="${id}" data-node="${node}" data-label="${label}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="#f2efe7" stroke="#1d1d1b" stroke-width="1.4"/>`;
+}
+function anchors() {
+  const load = st.run === 'load', run = RUNS[st.run];
+  const lp = load ? [24.8, 10.5, 0.3] : END.pos, ln = load ? [26, 10.5, 0.3] : END.neg;
+  let o = anchorDot('w-src-pos', 'srcP', `${run.left} +`, [3.5, 9.4, 4.9]) + anchorDot('w-src-neg', 'srcN', `${run.left} −`, [6.5, 9.4, 4.9]);
+  o += anchorDot('w-load-pos', 'loadP', `${run.right} +`, lp) + anchorDot('w-load-neg', 'loadN', `${run.right} −`, ln);
+  if (st.fuse > 0) {
+    const fx = FUSE_X[st.pos];
+    o += anchorDot('w-fuse-a', 'fuseA', 'Fuse, source side', [fx - 0.9, Y_POS, 0.45]) + anchorDot('w-fuse-b', 'fuseB', 'Fuse, load side', [fx + 0.9, Y_POS, 0.45]);
+  }
+  return o;
+}
+
+const R_FUSE = 0.005;
+// + conductor as a chain of [node, ohms from source +]; a NaN step marks an open (blown fuse / burnt wire).
+function chains() {
+  const c = calc(), run = RUNS[st.run];
+  const joints = (run.src === 'batt' ? (st.lug === 'bad' ? 0.02 : 0.0005) : 0) + (st.fer === 'bad' ? 0.012 : 0.001) + (run.src === 'pv' ? (st.mc4 === 'bad' ? 0.05 : 0.002) : 0);
+  const half = c.rWire / 2 + joints / 2, frac = (FUSE_X[st.pos] - 3.5) / 20.7;
+  const pos = [['srcP', 0]];
+  if (st.fuse > 0) pos.push(['fuseA', half * frac], ['fuseB', st.blown ? NaN : half * frac + R_FUSE]);
+  pos.push(['loadP', st.burnt ? NaN : half + (st.fuse > 0 ? R_FUSE : 0)]);
+  return { pos, neg: [['srcN', 0], ['loadN', st.burnt ? NaN : half]], c, run };
+}
+function nets() {
+  const { pos, neg, c, run } = chains(), V = run.v, i = c.i, out = {};
+  const imax = run.src === 'batt' ? 300 : run.src === 'pv' ? 2.83 : 10;
+  const dead = st.shortAt && run.src !== 'batt';
+  let open = false;
+  for (const [n, r] of pos) { if (isNaN(r)) open = true; out[n] = { v: dead ? 0 : open ? i * (neg[1][1] || 0) : V - i * r, g: 'run', imax }; }
+  for (const [n, r] of neg) out[n] = { v: dead ? 0 : i * (isNaN(r) ? 0 : r), g: 'run', imax };
+  if (st.burnt) out.loadN = { v: 0, g: 'load' }, out.loadP = { v: 0, g: 'load' };
+  return out;
+}
+function resistance(a, b) {
+  const { pos, neg } = chains();
+  for (const ch of [pos, neg]) {
+    const ia = ch.findIndex(x => x[0] === a), ib = ch.findIndex(x => x[0] === b);
+    if (ia < 0 || ib < 0) continue;
+    const [lo, hi] = ia < ib ? [ia, ib] : [ib, ia];
+    for (let k = lo + 1; k <= hi; k++) if (isNaN(ch[k][1])) return Infinity;
+    return Math.abs(ch[hi][1] - ch[lo][1]) + 0.05;
+  }
+  return Infinity;
+}
+Multimeter.setModel({ nets, resistance });
+Multimeter.on(e => {
+  if (e.type !== 'reading' || e.knob !== 'V' || e.ac) return;
+  const pair = (x, y) => (e.redNode === x && e.blackNode === y) || (e.redNode === y && e.blackNode === x);
+  if (pair('srcP', 'loadP') || pair('srcN', 'loadN')) {
+    log(`📟 Drop along one conductor: ${e.text}. Total drop = + side + − side.`);
+    if (Math.abs(e.value) > 0.005) tick('meter');
+  } else if (pair('srcP', 'srcN')) log(`📟 Source: ${e.text}`);
+  else if (pair('loadP', 'loadN')) log(`📟 At the load: ${e.text}. Compare with the source.`);
+  else if (pair('fuseA', 'fuseB')) log(`📟 Across the fuse: ${e.text}${st.blown ? ' — full voltage across a fuse means it is blown.' : '.'}`);
+});
+
+const STEPS = {
+  lug: { title: 'RING LUG CRIMP', s: ['Strip 8–10 mm of insulation', 'Twist strands, push fully into the barrel', 'Crimp it', 'Slide on heat-shrink', 'Bolt it to the battery terminal'], choiceAt: 2, opts: ['Crimp tool', 'Squash with pliers'] },
+  fer: { title: 'FERRULE', s: ['Strip ~10 mm of insulation', 'Twist the strands', 'Ferrule?', 'Tighten in the screw terminal'], choiceAt: 2, opts: ['Ferrule + crimp', 'No ferrule, bare'] },
+  mc4: { title: 'MC4 ASSEMBLY', s: ['Strip ~7 mm of insulation', 'Crimp the metal pin', 'Push pin into the housing', 'Tighten the gland nut', 'Join male–female, + to + (check with meter)'], choiceAt: 2, opts: ['Push until CLICK', 'Leave it half in'] },
+};
+
+function inset() {
+  const sp = STEPS[st.close], n = st.step, x0 = 600, y0 = 32, W = 290, H = 210;
+  let o = `<g><rect x="${x0}" y="${y0}" width="${W}" height="${H}" rx="12" fill="#fbf8f1" stroke="#1d1d1b" stroke-width="1.6"/>`
+    + `<text x="${x0 + 12}" y="${y0 + 20}" font-size="10" font-weight="700" fill="#8a8577">CLOSE-UP · ${sp.title}</text>`;
+  const cy = y0 + 90, bad = st.choice === 1;
+  const stripped = n >= 1, inside = n >= 2, crimped = n >= 3;
+  o += `<rect x="${x0 + 20}" y="${cy - 9}" width="${inside ? 120 : 110}" height="18" rx="5" fill="${st.close === 'mc4' ? '#262624' : '#d6452f'}" class="ink"/>`;
+  if (stripped) for (let k = -2; k <= 2; k++) o += `<line x1="${x0 + (inside ? 140 : 130)}" y1="${cy + k * 2.5}" x2="${x0 + (inside ? 165 : 158) + (st.close === 'fer' && n >= 3 && bad ? k * 3 : 0)}" y2="${cy + k * (st.close === 'fer' && n >= 3 && bad ? 6 : 2.5)}" stroke="#c98a3a" stroke-width="2"/>`;
+  if (st.close === 'lug' && inside) {
+    o += `<rect x="${x0 + 140}" y="${cy - 11}" width="44" height="22" rx="3" fill="#d9c8a0" class="ink"/><circle cx="${x0 + 210}" cy="${cy}" r="24" fill="#d9c8a0" class="ink"/><circle cx="${x0 + 210}" cy="${cy}" r="9" fill="#fbf8f1" class="ink"/>`;
+    if (crimped) o += bad ? `<path d="M${x0 + 146},${cy - 4} l14,8 l14,-10" stroke="#1d1d1b" fill="none"/><text x="${x0 + 160}" y="${cy + 30}" font-size="9" fill="#d6452f">gap, loose</text>` : `<polygon points="${x0 + 152},${cy - 8} ${x0 + 172},${cy - 8} ${x0 + 176},${cy} ${x0 + 172},${cy + 8} ${x0 + 152},${cy + 8} ${x0 + 148},${cy}" fill="none" stroke="#1d1d1b"/>`;
+    if (n >= 4) o += `<rect x="${x0 + 120}" y="${cy - 13}" width="44" height="26" rx="5" fill="#d6452f" opacity=".7" class="ink"/>`;
+    if (n >= 5) o += `<circle cx="${x0 + 210}" cy="${cy}" r="12" fill="#9aa1a7" class="ink"/><text x="${x0 + 210}" y="${cy + 4}" font-size="9" text-anchor="middle">M6</text>`;
+  }
+  if (st.close === 'fer' && n >= 3 && !bad) o += `<rect x="${x0 + 136}" y="${cy - 8}" width="34" height="16" rx="3" fill="#3a5bd0" class="ink"/>`;
+  if (st.close === 'fer' && n >= 4) o += `<rect x="${x0 + 150}" y="${cy - 26}" width="60" height="52" rx="4" fill="#3a4256" opacity=".85" class="ink"/><circle cx="${x0 + 180}" cy="${cy - 18}" r="6" fill="#ccc" class="ink"/>`;
+  if (st.close === 'mc4') {
+    if (n >= 2) o += `<rect x="${x0 + 140}" y="${cy - 4}" width="30" height="8" fill="#c0c0c0" class="ink"/>`;
+    if (n >= 3) o += `<rect x="${x0 + (bad ? 160 : 130)}" y="${cy - 14}" width="70" height="28" rx="6" fill="#2f2f2f" class="ink"/>` + (bad ? `<text x="${x0 + 150}" y="${cy + 32}" font-size="9" fill="#d6452f">pin half out</text>` : `<text x="${x0 + 210}" y="${cy - 20}" font-size="9" font-weight="700">CLICK</text>`);
+    if (n >= 4) o += `<rect x="${x0 + 118}" y="${cy - 12}" width="14" height="24" rx="3" fill="#555" class="ink"/>`;
+    if (n >= 5) o += `<rect x="${x0 + 200}" y="${cy - 14}" width="60" height="28" rx="6" fill="#3b3b3b" class="ink"/><text x="${x0 + 230}" y="${cy + 4}" font-size="10" fill="#fff" text-anchor="middle">+ / +</text>`;
+  }
+  const label = n < sp.s.length ? `${n + 1}/${sp.s.length}: ${sp.s[n]}` : (bad ? '✗ Bad joint made' : '✓ Good joint made');
+  o += `<text x="${x0 + 12}" y="${y0 + 150}" font-size="10.5" font-weight="700" fill="${n >= sp.s.length && bad ? '#d6452f' : '#1d1d1b'}">${label}</text>`;
+  const btn = (x, t, attr, cls = '') => { const w = t.length * 6.6 + 16; return `<g class="step ${cls}" ${attr}><rect x="${x}" y="${y0 + 166}" width="${w}" height="22" rx="11"/><text x="${x + w / 2}" y="${y0 + 181}" text-anchor="middle">${t}</text></g>`; };
+  if (n === sp.choiceAt) o += btn(x0 + 12, sp.opts[0], 'data-choice="0"') + btn(x0 + 12 + sp.opts[0].length * 6.6 + 24, sp.opts[1], 'data-choice="1"', 'bad');
+  else if (n < sp.s.length) o += btn(x0 + 12, 'Next step ▶', 'data-step="next"');
+  else o += btn(x0 + 12, 'Redo ↺', 'data-step="redo"');
+  return o + `</g>`;
+}
+
+function stepNext() {
+  const sp = STEPS[st.close];
+  st.step++;
+  if (st.step === sp.s.length) {
+    const key = { lug: 'lug', fer: 'fer', mc4: 'mc4' }[st.close], bad = st.choice === 1;
+    st[key] = bad ? 'bad' : 'good';
+    if (st.close === 'lug') { if (!bad) tick('lug'); log(bad ? 'Plier-squashed lug: ~20 mΩ contact (typical bad joint). Raise the current and watch the battery terminal heat up.' : 'Lug crimped properly, ~0.5 mΩ contact.', bad ? 'w' : ''); if (st.run !== 'bat' && st.run !== 'inv') log('The lug matters on battery runs (Controller → battery / inverter).'); }
+    if (st.close === 'fer') { if (!bad) tick('ferrule'); log(bad ? 'No ferrule: strands splay, one can touch the next terminal. The screw works loose.' : 'With a ferrule the screw grips every strand.', bad ? 'w' : ''); }
+    if (st.close === 'mc4') { if (!bad) tick('mc4'); log(bad ? 'MC4 pin half-seated: loose contact, heat and arcing risk. See the "Panel → controller" run.' : 'MC4 clicked home, gland tight, polarity checked. Solid joint.', bad ? 'w' : ''); }
+  }
+}
+
+const tick = makeChecklist([
+  ['table', 'Looked at all four section 8 runs'],
+  ['drop', 'Saw more than 5% voltage drop on a thin wire'],
+  ['al', 'Compared aluminium vs copper'],
+  ['lug', 'Fitted a ring lug properly with a crimp tool'],
+  ['badlug', 'Saw the hot joint of a plier-squashed lug'],
+  ['ferrule', 'Used a ferrule in the screw terminal'],
+  ['fuseok', 'Fuse saved the wire in a short'],
+  ['fusefar', 'Fuse was far away, the wire burnt in a short (lesson)'],
+  ['mc4', 'Assembled an MC4 until it clicked'],
+  ['meter', 'Measured the voltage drop with the multimeter (source + → load +)'],
+], () => log('🎉 Fig. 06 practice complete!'));
+
+const select = makeParts(PARTS, id => { st.sel = id; render(); });
+
+function doShort(at) {
+  if (st.burnt || st.blown) return log('First use "Clear short, replace wire/fuse".', 'w');
+  st.shortAt = at;
+  const run = RUNS[st.run], x = SHORT_X[at];
+  if (run.src === 'pv') { log('A panel short only gives Isc (~2.83A). The wire did not heat up. That is why measuring panel Isc is safe.'); return; }
+  if (run.src === 'ctrl') { log('The controller detected the LOAD short and switched the output off (electronic protection). A fuse on the load wire is still good practice.'); return; }
+  const protectedBy = st.fuse > 0 && FUSE_X[st.pos] < x;
+  if (protectedBy) { st.blown = true; tick('fuseok'); log(`💥 Battery short current (hundreds of amps, typical) → the ${st.fuse}A fuse blew in milliseconds. Wire is safe.`); }
+  else {
+    st.burnt = true;
+    if (st.fuse > 0) { tick('fusefar'); log('🔥 The fuse was PAST the short. The wire from battery to short had no protection: insulation melted, fire risk! Put the fuse near the battery.', 'e'); }
+    else log('🔥 No fuse! Wire red hot, insulation burnt. That is why battery + gets a fuse.', 'e');
+  }
+}
+
+const actions = {
+  cLug() { st.close = 'lug'; st.step = 0; st.choice = null; },
+  cFer() { st.close = 'fer'; st.step = 0; st.choice = null; },
+  cMc4() { st.close = 'mc4'; st.step = 0; st.choice = null; },
+  sMid() { doShort('mid'); },
+  sEnd() { doShort('end'); },
+  sFix() { st.blown = false; st.burnt = false; st.shortAt = null; log('Short cleared, new wire and new fuse fitted.'); },
+  oThin() { setRun('inv'); st.size = 1; st.mat = 'cu'; log('1 sq mm at 25A: twice the wire capacity (~11A). Watch the heat and drop.', 'w'); },
+  oAl() { st.mat = 'al'; },
+  oFar() { st.pos = 'far'; if (st.fuse === 0) st.fuse = 10; log('Fuse is now near the load. Now try "Short in the middle".', 'w'); },
+  oBig() { setRun('load'); st.size = 1.5; st.mat = 'cu'; st.fuse = 30; st.i = 20; log('30A fuse, 1.5 sq mm wire (~15A), 20A load: the fuse stays quiet while the wire heats up.', 'w'); },
+  oReset() { setRun('bat'); Object.assign(st, { mat: 'cu', pos: 'near', blown: false, burnt: false, shortAt: null, lug: 'good', fer: 'good', mc4: 'good', step: 0, choice: null }); log('Reset: Controller → battery, 2.5 sq mm copper, 10A fuse near the battery.'); },
+};
+
+function setRun(k) {
+  const r = RUNS[k];
+  Object.assign(st, { run: k, size: r.size, i: r.i, l: r.l, fuse: r.fuse, blown: false, burnt: false, shortAt: null });
+  st.seenRuns.add(k);
+  if (st.seenRuns.size === 4) tick('table');
+}
+
+let lastWarn = '';
+function render() {
+  const c = calc();
+  if (!st.blown && st.fuse > 0 && st.i > st.fuse && !st.burnt) { st.blown = true; log(`Current ${st.i}A > fuse ${st.fuse}A: fuse blew (overload).`, 'w'); return render(); }
+  $('fig').innerHTML = scene(c);
+  $('sWire').textContent = `${st.size} mm² ${st.mat === 'cu' ? 'Cu' : 'Al'}`;
+  $('sDrop').textContent = `${c.drop.toFixed(2)}V · ${c.pct.toFixed(1)}%`;
+  $('sDrop').className = c.pct > 5 ? 'bad' : '';
+  $('sHeat').textContent = st.burnt ? 'BURNT!' : (c.rise > 100 ? '>+100°C' : `+${c.rise.toFixed(0)}°C`);
+  $('sHeat').className = st.burnt || c.rise > 45 ? 'bad' : '';
+  $('sLoss').textContent = `${c.loss.toFixed(2)}W`;
+  $('sFuse').textContent = st.fuse === 0 ? 'none' : st.blown ? `${st.fuse}A BLOWN` : `${st.fuse}A ${st.pos === 'near' ? 'near' : 'far'}`;
+  $('sFuse').className = st.blown || st.fuse === 0 && RUNS[st.run].src === 'batt' ? 'bad' : '';
+  $('cRun').value = st.run; $('cSize').value = String(st.size); $('cMat').value = st.mat; $('cI').value = st.i; $('cL').value = st.l;
+  $('cFuse').value = String(st.fuse); $('cPos').value = st.pos;
+  $('oI').textContent = st.i + 'A'; $('oL').textContent = st.l + ' m'; $('oWob').textContent = st.wob;
+
+  if (c.pct > 5) tick('drop');
+  if (st.lug === 'bad' && c.hot.lug > 12) tick('badlug');
+  if (st.mat === 'al' && c.i > 0) tick('al');
+
+  let h = '', bad = false, cat = '';
+  if (st.burnt) { h = 'The wire burnt. Think about fuse position and rating, then "Clear short".'; bad = true; }
+  else if (st.blown) { h = 'Fuse blew. Fix the cause, then "Clear short, replace wire/fuse".'; bad = true; }
+  else if (c.rise > 45) { h = `Wire capacity ~${c.amp.toFixed(0)}A, current ${st.i}A. The insulation can melt!`; bad = true; cat = 'hot'; }
+  else if (st.fuse > c.amp) { h = `Fuse (${st.fuse}A) is bigger than the wire (~${c.amp.toFixed(0)}A). On overload the wire burns first.`; bad = true; cat = 'bigfuse'; }
+  else if (c.pct > 5) { h = `Drop ${c.pct.toFixed(1)}%: use thicker wire or a shorter run.`; bad = true; cat = 'drop'; }
+  else if (Math.max(c.hot.lug, c.hot.fer, c.hot.mc4) > 12) { h = 'A bad joint is heating up. Redo it in the close-up.'; bad = true; cat = 'joint'; }
+  else if (RUNS[st.run].src === 'batt' && st.fuse === 0) { h = 'No fuse on a battery run!'; bad = true; cat = 'nofuse'; }
+  else h = `${c.pct.toFixed(1)}% drop, +${c.rise.toFixed(0)}°C. Fine. Now try a mistake.`;
+  $('hint').textContent = h; $('hint').classList.toggle('bad', bad);
+  if (cat && cat !== lastWarn) log(h, 'w');
+  lastWarn = cat;
+}
+
+bindMenus(actions, render);
+$('bRight').onclick = () => { const r = RUNS[st.run]; st.size = r.size; st.mat = 'cu'; log(`${r.name}: ${r.size} sq mm copper as per section 8.`); render(); };
+$('cRun').onchange = e => { setRun(e.target.value); log(`Run: ${RUNS[st.run].name}. ${RUNS[st.run].size} sq mm, ${RUNS[st.run].i}A, ${RUNS[st.run].l} m.`); render(); };
+$('cSize').onchange = e => { st.size = +e.target.value; render(); };
+$('cMat').onchange = e => { st.mat = e.target.value; render(); };
+$('cI').oninput = e => { st.i = +e.target.value; render(); };
+$('cL').oninput = e => { st.l = +e.target.value; render(); };
+$('cFuse').onchange = e => { st.fuse = +e.target.value; st.blown = false; render(); };
+$('cPos').onchange = e => { st.pos = e.target.value; render(); };
+$('cWob').oninput = e => { st.wob = +e.target.value; render(); };
+
+bindFigClicks($('fig'), select, e => {
+  const ch = e.target.closest('[data-choice]'), sp = e.target.closest('[data-step]');
+  if (ch) { st.choice = +ch.dataset.choice; stepNext(); render(); return true; }
+  if (sp) { if (sp.dataset.step === 'redo') { st.step = 0; st.choice = null; } else stepNext(); render(); return true; }
+  return false;
+});
+
+renderQuiz([
+  ['The panel is 10 m away. Why not 1.5 sq mm wire?', ['Wire is expensive', 'Long thin wire has more voltage drop and loss', 'MC4 will not fit'], 1, 'R = 0.0172 × 20 m / 1.5 ≈ 0.23Ω. With 4 sq mm ≈ 0.086Ω, about 3× less drop.'],
+  ['Why must the battery fuse be near the battery?', ['Looks neater', 'A fuse only protects the wire after it; battery-to-fuse is unprotected', 'The fuse stays cooler'], 1, 'With a far fuse, a short in between takes the full battery current.'],
+  ['Why not aluminium wire?', ['~1.6× more resistance, joints loosen and oxidise', 'It is magnetic', 'Current does not flow in it'], 0, 'Al ρ ≈ 0.028 vs Cu 0.0172. The doc says copper only.'],
+  ['A lug was squashed with pliers. What happens?', ['Nothing', 'Loose joint, higher resistance, hot terminal', 'The fuse blows sooner'], 1, 'Even a small joint resistance heats up by I²R. Use a crimp tool or get it crimped at the shop.'],
+  ['A 30A fuse on 1.5 sq mm wire, 20A load. What happens?', ['The fuse blows', 'The fuse holds; the wire overheats/burns', 'The load will not run'], 1, 'The fuse rating must be below the wire capacity.'],
+]);
+
+log('Controller → battery run: 2.5 sq mm copper, 1 m, 3A, 10A fuse near the battery. The close-up shows the first ring lug step. Press M for the multimeter.');
+render();
+</script>
+</body>
+</html>

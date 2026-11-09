@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solar Bench — Component gallery</title>
+<link rel="stylesheet" href="bench.css">
+<style>
+.stats{grid-template-columns:repeat(3,auto)}
+.stat b{font-size:16px;white-space:nowrap}
+.actions{gap:5px}
+.actions .btn{padding:3px 11px}
+.ctl output{float:right;font-size:11px;font-weight:700}
+.ctl .tog{font-size:12px;padding:2px 12px}
+kbd{border:1.4px solid var(--ink);border-radius:5px;padding:0 5px;font-size:11px;background:var(--paper)}
+</style>
+</head>
+<body>
+<div class="app">
+<aside id="side" data-cur="parts"></aside>
+<script src="bench.js"></script>
+<main>
+  <div class="head">
+    <div>
+      <h2>🧩 Component gallery</h2>
+      <div class="kicker">one file per part · meter: <kbd>M</kbd></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Part</span><b id="sPart">—</b></div>
+      <div class="stat"><span>Points</span><b id="sPts">—</b></div>
+      <div class="stat"><span>Meter</span><b id="sMeter">—</b></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="actions" id="partList"></div>
+    <svg id="fig" viewBox="0 0 900 540" aria-label="Component bench"></svg>
+  </div>
+
+  <div class="controls" id="ctlRow"></div>
+
+  <div class="cols">
+    <div>
+      <h3>Specs</h3>
+      <div class="card" id="specCard"></div>
+      <h3>What to learn</h3>
+      <div class="note" id="notes"></div>
+      <h3>Source file</h3>
+      <div class="note" id="srcFile"></div>
+    </div>
+    <div>
+      <h3>Serial monitor (meter readings)</h3>
+      <div class="log" id="log"></div>
+      <h3>How it works</h3>
+      <div class="note">Each part registers itself in <code>components/registry.js</code> with its drawing, controls, test points (dots) and electrical model. Drag the meter's probes onto any two dots; the reading comes from that part's model. Change a control and the reading follows.</div>
+    </div>
+  </div>
+</main>
+</div>
+<script src="kit.js"></script>
+<script src="components/multimeter.js"></script>
+<script src="components/registry.js"></script>
+<script src="components/solar-panel.js"></script>
+<script src="components/charge-controller.js"></script>
+<script src="components/battery.js"></script>
+<script src="components/fuse.js"></script>
+<script src="components/dc-fan.js"></script>
+<script src="components/dcdc-converter.js"></script>
+<script src="components/wifi-router.js"></script>
+<script src="components/phone-usb.js"></script>
+<script src="components/inverter.js"></script>
+<script src="components/esp32.js"></script>
+<script src="components/ina226.js"></script>
+<script src="components/mc4-connector.js"></script>
+<script>
+const FILES = { panel: 'solar-panel.js', controller: 'charge-controller.js', battery: 'battery.js', fuse: 'fuse.js', fan: 'dc-fan.js', dcdc: 'dcdc-converter.js', router: 'wifi-router.js', phone: 'phone-usb.js', inverter: 'inverter.js', esp32: 'esp32.js', ina226: 'ina226.js', mc4: 'mc4-connector.js' };
+const parts = BenchParts.list();
+const states = Object.fromEntries(parts.map(p => [p.id, BenchParts.initState(p)]));
+const view = { cur: parts[0].id, all: false, wob: 2 };
+const log = makeLog();
+const pre = id => `${id}:`;
+const shown = () => view.all ? parts : [BenchParts.get(view.cur)];
+
+Multimeter.setModel({
+  nets() {
+    const out = {};
+    for (const p of shown()) for (const [k, v] of Object.entries(p.nets(states[p.id]))) out[pre(p.id) + k] = { ...v, g: pre(p.id) + (v.g || 'x') };
+    return out;
+  },
+  resistance(a, b) {
+    const [pa, ka] = a.split(':'), [pb, kb] = b.split(':');
+    if (pa !== pb) return Infinity;
+    const p = BenchParts.get(pa);
+    return p && p.resistance ? p.resistance(states[pa], ka, kb) : Infinity;
+  },
+});
+
+function render() {
+  let o = wobbleDefs(view.wob);
+  if (!view.all) {
+    const I = iso(22, 520, 250), J = BenchParts.at(I, [-3, -3, -0.8]), p = BenchParts.get(view.cur);
+    o += `<g filter="url(#wob)">${J.box(0, 0, 0, 18, 13, 0.8, '#e6dcc6')}</g>`;
+    o += `<g class="part">${p.draw(I, states[p.id], { at: [0, 0, 0], prefix: pre(p.id) })}</g>`;
+  } else {
+    const I = iso(9, 460, 130), CW = 14, CH = 11;
+    o += `<g filter="url(#wob)">${I.box(-1, -1, -0.8, CW * 4 + 1, CH * 3 + 1, 0.8, '#e6dcc6')}</g>`;
+    BenchParts.compact = true;
+    parts.forEach((p, i) => { o += p.draw(I, states[p.id], { at: [(i % 4) * CW + 1, Math.floor(i / 4) * CH + 1, 0], prefix: pre(p.id) }); });
+    BenchParts.compact = false;
+    parts.forEach((p, i) => { const c = i % 4, r = Math.floor(i / 4), [x, y] = I.P(c * CW + 3, r * CH + 9, 0), [ax, ay] = I.P(c * CW + 5, r * CH + 4, 0.5); o += pill(x, y, p.name.split(' (')[0].toUpperCase(), p.id, ax, ay); });
+  }
+  $('fig').innerHTML = o;
+  $('sPts').textContent = $('fig').querySelectorAll('[data-anchor]').length;
+}
+
+function showPart(id) {
+  view.cur = id; view.all = false;
+  const p = BenchParts.get(id);
+  $('sPart').textContent = p.name;
+  document.querySelectorAll('#partList .btn').forEach(b => b.classList.toggle('on', b.dataset.id === id));
+  $('specCard').innerHTML = `<div class="k">${p.name}</div><table>${p.specs.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('')}</table>`;
+  $('notes').textContent = p.notes;
+  $('srcFile').innerHTML = `<code>components/${FILES[id]}</code>`;
+  buildControls(p);
+  render();
+}
+
+function showAll() {
+  view.all = true;
+  $('sPart').textContent = 'All parts';
+  document.querySelectorAll('#partList .btn').forEach(b => b.classList.toggle('on', b.dataset.id === '*'));
+  $('specCard').innerHTML = `<div class="k">All parts</div>${parts.length} parts on one bench. Every dot is measurable. Pick a part on the left to change its controls.`;
+  $('notes').textContent = 'Readings only make sense between two dots of the same part: different parts are not wired together here, so the meter shows a floating reading.';
+  $('srcFile').innerHTML = `<code>components/registry.js</code> + ${parts.length} part files`;
+  $('ctlRow').innerHTML = wobbleCtl();
+  bindWobble();
+  render();
+}
+
+const wobbleCtl = () => `<div class="ctl"><span>Hand-drawn wobble <output id="oWob">${view.wob}</output></span><input type="range" id="cWob" min="0" max="6" step="0.5" value="${view.wob}"></div>`;
+function bindWobble() { $('cWob').oninput = e => { view.wob = +e.target.value; $('oWob').textContent = view.wob; render(); }; }
+
+function buildControls(p) {
+  const s = states[p.id];
+  $('ctlRow').innerHTML = (p.controls || []).map(c => {
+    if (c.type === 'range') return `<div class="ctl"><span>${c.label} <output data-o="${c.key}">${s[c.key]}${c.unit || ''}</output></span><input type="range" data-k="${c.key}" min="${c.min}" max="${c.max}" step="${c.step}" value="${s[c.key]}"></div>`;
+    if (c.type === 'toggle') return `<div class="ctl"><span>${c.label}</span><button class="btn tog${s[c.key] ? ' on' : ''}" data-t="${c.key}">${s[c.key] ? 'ON' : 'OFF'}</button></div>`;
+    return `<div class="ctl"><span>${c.label}</span><select data-k="${c.key}">${c.options.map(([v, t]) => `<option value="${v}"${String(s[c.key]) === v ? ' selected' : ''}>${t}</option>`).join('')}</select></div>`;
+  }).join('') + `<div class="ctl"><span>Reset</span><button class="btn tog" id="bReset">Reset part</button></div>` + wobbleCtl();
+  const changed = () => { if (p.update) p.update(s, log); buildControlsSync(p); render(); };
+  $('ctlRow').querySelectorAll('input[data-k]').forEach(el => el.oninput = () => { s[el.dataset.k] = +el.value; changed(); });
+  $('ctlRow').querySelectorAll('select[data-k]').forEach(el => el.onchange = () => { s[el.dataset.k] = el.value; changed(); });
+  $('ctlRow').querySelectorAll('[data-t]').forEach(el => el.onclick = () => { s[el.dataset.t] = !s[el.dataset.t]; log(`${p.name}: ${el.dataset.t} → ${s[el.dataset.t] ? 'ON' : 'OFF'}`); changed(); });
+  $('bReset').onclick = () => { states[p.id] = BenchParts.initState(p); log(`${p.name} reset.`); buildControls(p); render(); };
+  bindWobble();
+}
+
+function buildControlsSync(p) {
+  const s = states[p.id], unit = k => (p.controls.find(c => c.key === k) || {}).unit || '';
+  $('ctlRow').querySelectorAll('output[data-o]').forEach(o => o.textContent = s[o.dataset.o] + unit(o.dataset.o));
+  $('ctlRow').querySelectorAll('[data-t]').forEach(b => { b.classList.toggle('on', !!s[b.dataset.t]); b.textContent = s[b.dataset.t] ? 'ON' : 'OFF'; });
+}
+
+$('partList').innerHTML = parts.map(p => `<button class="btn" data-id="${p.id}">${p.name}</button>`).join('') + `<button class="btn warn" data-id="*">Show all on one bench</button>`;
+$('partList').querySelectorAll('.btn').forEach(b => b.onclick = () => b.dataset.id === '*' ? showAll() : showPart(b.dataset.id));
+
+const labelOf = id => { const el = document.querySelector(`[data-anchor="${CSS.escape(id)}"]`); return el ? el.dataset.label : id; };
+Multimeter.on(e => {
+  if (e.type === 'reading') log(`📟 ${e.text}  (${e.knob}${e.knob === 'V' || e.knob === 'A' ? (e.ac ? ' AC' : ' DC') : ''}; red: ${labelOf(e.red)}, black: ${labelOf(e.black)})`);
+  if (e.type === 'short') log(`💥 SHORT: ~${Math.round(e.amps)}A through the meter's 10A socket. Meter fuse blown.`, 'e');
+  if (e.type === 'fuse-mA') log('💥 mA fuse blown: big current through the VΩmA socket.', 'e');
+  if (e.type === 'ohm-live') log('Ω on a powered part reads garbage. Switch the part off first.', 'w');
+});
+setInterval(() => { const m = Multimeter.state(); $('sMeter').textContent = m.open ? `${m.knob} · ${m.reading || '—'}` : 'hidden (M)'; }, 300);
+
+showPart(parts[0].id);
+log('Gallery ready. Press M or the 🔧 button for the meter, then drag its probes onto the dots.');
+</script>
+</body>
+</html>

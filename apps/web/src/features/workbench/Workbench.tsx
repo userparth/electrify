@@ -1,0 +1,49 @@
+'use client';
+import dynamic from 'next/dynamic';
+import { useEffect, type ReactNode } from 'react';
+import { registerFirmwareHost } from '../firmware/host';
+import { registerPythonHost } from '../python/host';
+import { Canvas } from './Canvas';
+import { CodePanel } from './CodePanel';
+import { EventLog, Inspector, Palette, Toolbar } from './Panels';
+import type { Doc } from './model';
+import { runner, useBench } from './store';
+
+const Scene3D = dynamic(() => import('./three/Scene3D'), { ssr: false, loading: () => <div className="wb-canvas wb-3d-loading">Loading 3D…</div> });
+
+export function Workbench({ storageKey, initial, dt, side, title }: { storageKey?: string; initial?: () => Doc; dt?: number; side?: ReactNode; title?: ReactNode } = {}) {
+  const view3d = useBench(s => s.view3d);
+  useEffect(() => {
+    registerPythonHost();
+    registerFirmwareHost();
+    runner.start({ key: storageKey, initial, dt });
+    const key = (e: KeyboardEvent) => {
+      if (/INPUT|SELECT|TEXTAREA/.test((e.target as HTMLElement).tagName)) return;
+      const s = useBench.getState(), mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) s.redo(); else s.undo(); return; }
+      if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); s.redo(); return; }
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); s.remove(s.sel); }
+      if (e.key.toLowerCase() === 'r' && s.sel?.kind === 'part') s.rotate(s.sel.id);
+      if (e.key === 'Escape') s.select(null);
+      if (e.key === ' ') { e.preventDefault(); s.setRunning(!s.running); }
+      if (e.key.toLowerCase() === 'v' && !mod) s.setView3d(!s.view3d);
+    };
+    addEventListener('keydown', key);
+    return () => { removeEventListener('keydown', key); runner.stop(); };
+  }, [storageKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="wb">
+      <header className="wb-head"><a href="/" className="wb-brand"><b>⚡ Electronics Bench</b></a>{title ?? <><a href="/learn" className="wb-muted">Lessons</a><a href="/solar" className="wb-muted">Solar module</a></>}<Toolbar /></header>
+      <Palette />
+      <div className="wb-center">{view3d ? <Scene3D /> : <Canvas />}<CodePanel /></div>
+      <aside className="wb-side">
+        {side}
+        <h3>Selected</h3>
+        <Inspector />
+        <h3>Events</h3>
+        <EventLog />
+      </aside>
+    </div>
+  );
+}

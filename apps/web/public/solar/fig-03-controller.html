@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solar Bench — Fig. 03 Charge controller</title>
+<link rel="stylesheet" href="bench.css">
+<style>
+.stats{grid-template-columns:repeat(5,auto)}
+.stat b{font-size:16px;white-space:nowrap}
+.controls{row-gap:14px}
+.ctl output{float:right;font-size:11px;font-weight:700}
+svg.chart{width:100%;height:auto;display:block;background:var(--paper);border:1.6px solid var(--ink);border-radius:12px;box-shadow:2px 2px 0 var(--ink);margin-bottom:10px}
+svg.chart text{font:10px ui-monospace,Menlo,monospace}
+.glow{filter:drop-shadow(0 0 4px #f3c33b)}
+</style>
+</head>
+<body>
+<div class="app">
+<aside id="side" data-cur="03"></aside>
+<script src="bench.js"></script>
+
+<main>
+  <div class="head">
+    <div>
+      <h2>Fig. 03 — Charge controller</h2>
+      <div class="kicker">MagiDeal 10A PWM · 12/24V auto · LCD · 2× USB</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Time</span><b id="sTime">09:00</b></div>
+      <div class="stat"><span>Battery</span><b id="sBatt">—</b></div>
+      <div class="stat"><span>Stage</span><b id="sStage">—</b></div>
+      <div class="stat"><span>Duty</span><b id="sDuty">—</b></div>
+      <div class="stat"><span>System · load</span><b id="sMode">OFF</b></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="actions">
+      <div class="dd">
+        <button class="btn" data-menu="mBoot">Power-up ▾</button>
+        <div class="menu" id="mBoot">
+          <button data-act="bootBat">Connect battery first (correct)</button>
+          <button data-act="bootPv">Connect panel first</button>
+          <button data-act="off">Disconnect everything</button>
+        </div>
+      </div>
+      <button class="btn" id="bLoad">Load (router) on</button>
+      <button class="btn" id="bNeg">DC-DC IN− : LOAD−</button>
+      <button class="btn" id="bSee">See-through (look inside)</button>
+      <button class="btn" id="bCmp">Compare PWM vs MPPT</button>
+      <button class="btn" id="bMeter">🔧 Meter on PV terminals</button>
+      <div class="dd">
+        <button class="btn warn" data-menu="mOops">Try a mistake ▾</button>
+        <div class="menu" id="mOops">
+          <button data-act="oNeg">Put DC-DC IN− on battery −</button>
+          <button data-act="oLvd">Set LVD to 10.8V</button>
+          <button data-act="oLi">Use a lithium battery</button>
+          <button data-act="oSeries">Second panel in series (Voc ~49V)</button>
+          <button data-act="oNew">Fit a new controller (reset)</button>
+        </div>
+      </div>
+      <div class="hint" id="hint"></div>
+    </div>
+    <svg id="fig" viewBox="0 70 900 540" aria-label="Isometric charge controller"></svg>
+  </div>
+
+  <div class="controls">
+    <div class="ctl"><span>Time of day <output id="oTime"></output></span><input type="range" id="cTime" min="0" max="1439" value="540"></div>
+    <div class="ctl"><span>Weather · play</span>
+      <select id="cWx"><option value="1">Clear sun</option><option value="0.55">Cloudy</option><option value="0.2">Rain</option></select>
+      <select id="cSpeed"><option value="2">1x</option><option value="10" selected>5x</option><option value="40">20x</option></select>
+      <button class="btn" id="cPlay" style="padding:1px 10px">❚❚</button>
+    </div>
+    <div class="ctl"><span>Battery type</span>
+      <select id="cType"><option value="SLD">SLD (sealed/SMF)</option><option value="FLD">FLD (flooded)</option><option value="GEL">GEL</option></select>
+    </div>
+    <div class="ctl"><span>Hand-drawn wobble <output id="oWob"></output></span><input type="range" id="cWob" min="0" max="6" step="0.5" value="2"></div>
+    <div class="ctl"><span>LVD (load cut) <output id="oLvd"></output></span><input type="range" id="cLvd" min="10.8" max="12.4" step="0.1" value="11.1"></div>
+    <div class="ctl"><span>Reconnect <output id="oRec"></output></span><input type="range" id="cRec" min="12.2" max="13.2" step="0.1" value="12.6"></div>
+    <div class="ctl"><span>Max PV input (on label)</span>
+      <select id="cMax"><option value="0">Not known yet</option><option value="25">25V</option><option value="50">50V</option></select>
+    </div>
+    <div class="ctl"><span>Morning air temp <output id="oTamb"></output></span><input type="range" id="cTamb" min="2" max="40" value="12"></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h3>In this figure</h3>
+      <div class="note">The controller does two jobs: it feeds panel current into the battery safely (PWM switching, 3 stages), and it cuts the load before the battery runs flat (LVD). Inside are two MOSFET switches: Q1 for the panel, Q2 for the load. Open the 🔧 meter and probe any terminal.</div>
+      <h3>Selected part</h3>
+      <div class="card" id="partCard"><div class="k">Nothing selected</div>Click any part or label in the figure. See-through shows the parts inside.</div>
+      <h3>Controller parts</h3>
+      <div id="chips"></div>
+      <h3>Battery type voltages (typical)</h3>
+      <div class="card" id="typeCard"></div>
+      <h3>Open item: max PV input</h3>
+      <div class="card" id="maxCard"></div>
+    </div>
+    <div>
+      <h3>PWM switching (Q1)</h3>
+      <svg class="chart" id="wave" viewBox="0 0 420 120"></svg>
+      <h3>Battery voltage, last 24 hours</h3>
+      <svg class="chart" id="hist" viewBox="0 0 420 170"></svg>
+      <h3>Serial monitor (event log)</h3>
+      <div class="log" id="log"></div>
+      <h3>Check yourself</h3>
+      <div id="quiz"></div>
+      <h3>Practice task</h3>
+      <div class="note" style="margin-bottom:6px">Do these in the figure. Each step ticks itself.</div>
+      <ul class="check" id="check"></ul>
+    </div>
+  </div>
+</main>
+</div>
+
+<script src="kit.js"></script>
+<script src="components/multimeter.js"></script>
+<script>
+const K = iso(16, 470, 150), { P, poly, box, line, path, faceY, faceX, faceZ } = K, S = K.S;
+const TYPES = { SLD: { absorb: 14.4, float: 13.8 }, FLD: { absorb: 14.6, float: 13.7 }, GEL: { absorb: 14.2, float: 13.8 } };
+const RED = '#d6452f', BLK = '#262624';
+
+const st = {
+  t: 540, playing: true, speed: 10, wx: 1, wob: 2, type: 'SLD', lvd: 11.1, rec: 12.6, maxPv: 0, tamb: 12,
+  bat: false, pv: false, mode: null, ah: 26 * 0.55, stage: 'bulk', absorbMin: 0, load: false, cut: false,
+  neg: 'load', see: false, dead: false, phase: 0, hist: [], histAcc: 0, sel: null, warned: {},
+  last: { duty: 0, I: 0, V: 12.3, avail: 0, router: false },
+};
+
+const vrest = soc => {
+  const T = [[0, 11.5], [.25, 11.9], [.5, 12.2], [.75, 12.4], [1, 12.7]];
+  for (let i = 1; i < T.length; i++) if (soc <= T[i][0]) { const [a, va] = T[i - 1], [b, vb] = T[i]; return va + (vb - va) * (soc - a) / (b - a); }
+  return 12.7;
+};
+const sunAt = t => { const h = t / 60; return h < 6 || h > 18 ? 0 : Math.sin(Math.PI * (h - 6) / 12); };
+const coldVoc = () => 24.5 * (1 + 0.0028 * (25 - st.tamb));
+
+const log = makeLog(() => hhmm(st.t));
+const tick = makeChecklist([
+  ['boot12', 'Connected the battery first: 12V system detected'],
+  ['boot24', 'Connected the panel first and saw the 24V mistake'],
+  ['type', 'Set battery type to SLD (sealed)'],
+  ['lvd', 'Set LVD to 11.8–12.0V'],
+  ['stages', 'Watched all three stages: Bulk → Absorb → Float'],
+  ['lvdtrip', 'LVD cut the load, then it reconnected'],
+  ['neg', 'Put DC-DC IN− on battery − and saw the LVD bypass'],
+  ['maxpv', 'Picked the max PV rating and compared it with cold-morning Voc'],
+  ['pvmeter', 'Meter on PV terminals while charging: reads near battery voltage, not 21V'],
+  ['loadmeter', 'Meter on LOAD+ / LOAD− after an LVD cut: reads ~0V'],
+  ['mppt', 'Measured the PWM vs MPPT difference'],
+], () => log('🎉 Fig. 03 practice task complete!'));
+
+const PARTS = {
+  ctrl: { name: 'Charge controller', rows: [['Model', 'MagiDeal 10A PWM, 12/24V auto, LCD, 2× USB'], ['Max current', '10A (panel ~2.8A, later 2 panels ~5.7A)'], ['Battery', 'Lead-acid: sealed / gel / flooded'], ['Lithium', 'Not supported']] },
+  lcd: { name: 'LCD + buttons', rows: [['Shows', 'Battery V, charging icon, load status, 12/24V system'], ['Settings', 'Battery type, LVD, reconnect (check the manual for the exact menu)'], ['Backlight', 'Keep auto-off, saves a little power']] },
+  q1: { name: 'Q1: PV MOSFET (PWM switch)', rows: [['Job', 'Connects/disconnects the panel to the battery, very fast (typically hundreds of Hz to kHz)'], ['Duty', '% of ON time. ~100% in bulk, less near full'], ['PWM means', 'The panel runs at battery voltage, not at Vmp 21V']] },
+  q2: { name: 'Q2: LOAD MOSFET (− side)', rows: [['Job', 'Cuts the load at LVD'], ['Where', 'Many PWM controllers switch the LOAD− line. The + line stays tied straight to battery +'], ['So', 'DC-DC IN− goes on LOAD− only. On battery − the LVD is bypassed']] },
+  mcu: { name: 'Microcontroller', rows: [['Job', 'Measures voltage, picks the stage, drives Q1/Q2'], ['Power-up', 'Decides 12V or 24V system from the first reading']] },
+  term: { name: 'Terminals ☀ ▮ 💡', rows: [['☀ PV', 'Panel + / −'], ['▮ BAT', 'Battery + / − (connect first)'], ['💡 LOAD', 'Fan / DC-DC. Protected by LVD'], ['Wire', 'Use ferrules or twist the strands']] },
+  usb: { name: 'USB 5V', rows: [['Output', '5V, typically 1–2A total (check the label)'], ['Job', 'Phone / power bank'], ['Habit', 'Charge during the day']] },
+  panel: { name: 'Panel (input)', rows: [['Voc', '24.5V (higher in the cold)'], ['Isc', '2.83A'], ['Connect', 'AFTER the battery']] },
+  battery: { name: 'Battery', rows: [['Exide EP 26-12', '12V 26Ah SMF'], ['Type setting', 'SLD'], ['LVD', '11.8–12.0V stops the battery near 50%']] },
+  dcdc: { name: 'DC-DC + router', rows: [['Load', 'Router ~0.6A (6–8W)'], ['IN+', 'LOAD +'], ['IN−', 'LOAD − (not battery −!)']] },
+};
+const select = makeParts(PARTS, id => { st.sel = id; render(); });
+
+function boot(from) {
+  if (st.dead) return log('The controller is burnt. Use "Fit a new controller".', 'e');
+  if (st.mode) return log('Controller is already on. "Disconnect everything" first.', 'w');
+  if (from === 'bat') {
+    st.bat = true; st.mode = '12V';
+    log(`Battery connected (${vrest(st.ah / 26).toFixed(2)}V). MCU detected a 12V system ✓`); tick('boot12');
+    st.pv = true; log('Then the panel. Ready to charge.');
+  } else {
+    st.pv = true;
+    const sun = sunAt(st.t) * st.wx;
+    if (sun < 0.05) return log('It is dark, the panel gave no power. Controller stayed off.');
+    const v = 21 + 3.5 * Math.min(1, sun * 1.3);
+    st.mode = v > 18 ? '24V' : '12V';
+    log(`Panel connected first (~${v.toFixed(1)}V). The MCU decided this is a 24V system!`, 'e'); tick('boot24');
+    st.bat = true; log('Battery connected too, but the controller is stuck in 24V mode: it sees 12.4V as an "empty 24V battery".', 'w');
+  }
+}
+
+const actions = {
+  bootBat: () => boot('bat'),
+  bootPv: () => boot('pv'),
+  off() { Object.assign(st, { bat: false, pv: false, mode: null, cut: false, stage: 'bulk', absorbMin: 0 }); log('Everything disconnected (load → panel → battery). Controller off.'); },
+  oNeg() { st.neg = 'battery'; st.load = true; log('DC-DC IN− is now on battery −. Q2 (LOAD−) can no longer cut the router.', 'w'); },
+  oLvd() { st.lvd = 10.8; $('cLvd').value = 10.8; log('LVD 10.8V: the battery drains to ~10%. SMF life drops fast.', 'w'); },
+  oLi() { log('This controller has no lithium profile. LiFePO4 would get lead-acid 14.4V absorb + 13.8V float, and the BMS cutoff would fight the controller. For lithium, buy a controller that supports it.', 'e'); },
+  oSeries() {
+    const v = coldVoc() * 2;
+    if (st.maxPv === 25) { st.dead = true; Object.assign(st, { mode: null, cut: false }); log(`💥 2 panels in series: cold Voc ~${v.toFixed(1)}V > 25V limit. The controller input burnt out!`, 'e'); }
+    else if (st.maxPv === 50) log(`2 panels in series: Voc ~${v.toFixed(1)}V, right at the 50V limit. A cold morning can cross it. The doc says: wire them in parallel.`, 'w');
+    else log(`2 panels in series: Voc ~${v.toFixed(1)}V. Check the max PV input on the label first! The doc says: parallel, not series.`, 'w');
+  },
+  oNew() { st.dead = false; actions.off(); log('New controller fitted. Battery first this time.'); },
+};
+
+function step(dt) {
+  const sun = sunAt(st.t) * st.wx, soc = st.ah / 26, T = TYPES[st.type];
+  const ok = st.mode === '12V' && st.bat && !st.dead;
+  const avail = ok && st.pv ? 2.62 * sun : 0;
+  const base = vrest(soc) + 8 * Math.max(0, soc - 0.85);
+  let I = 0, duty = 0, V;
+  if (avail > 0) {
+    if (st.stage === 'bulk') { I = avail; duty = 1; if (base + 0.35 * I >= T.absorb) { st.stage = 'absorb'; log(`Bulk → Absorb: reached ${T.absorb}V. Duty will drop now.`); } }
+    if (st.stage !== 'bulk') {
+      const target = st.stage === 'absorb' ? T.absorb : T.float;
+      I = Math.min(avail, Math.max(0, (target - base) / 0.35)); duty = I / avail;
+      if (st.stage === 'absorb' && (st.absorbMin += dt) >= 120) { st.stage = 'float'; log(`Absorb → Float: battery full, now holding ${T.float}V.`); tick('stages'); }
+    }
+  }
+  if (st.stage !== 'bulk' && soc < 0.8) { st.stage = 'bulk'; st.absorbMin = 0; }
+  const loadOn = ok && st.load && !st.cut;
+  const router = st.bat && st.load && (st.neg === 'battery' ? !!st.mode || st.cut : loadOn);
+  const iL = router ? 0.6 : 0;
+  if (st.bat) st.ah = Math.max(0, Math.min(26, st.ah + (I - iL - (st.mode ? 0.015 : 0)) * dt / 60));
+  V = I > 0 ? base + 0.35 * I - 0.06 * iL : vrest(st.ah / 26) - 0.08 * iL;
+  if (ok && loadOn && V < st.lvd) { st.cut = true; log(`LVD: ${V.toFixed(2)}V < ${st.lvd}V → Q2 opened LOAD−.`, 'w'); }
+  if (st.cut && V >= st.rec) { st.cut = false; log(`Reconnect: ${V.toFixed(2)}V ≥ ${st.rec}V → load back on.`); tick('lvdtrip'); }
+  if (st.cut && router && st.neg === 'battery' && !st.warned.neg) { st.warned.neg = true; log('LVD opened LOAD−, but the DC-DC is wired to battery −: the router keeps running and the battery keeps draining!', 'e'); tick('neg'); }
+  if (!st.cut) st.warned.neg = false;
+  if (st.bat && st.ah / 26 < 0.2 && !st.warned.deep) { st.warned.deep = true; log(`Battery ${V.toFixed(2)}V (~${Math.round(st.ah / 26 * 100)}%). Very deep discharge!`, 'e'); }
+  if (st.ah / 26 > 0.4) st.warned.deep = false;
+  st.last = { duty, I, V, avail, router, sun, loadOn };
+  st.histAcc += dt;
+  if (st.histAcc >= 10) { st.histAcc = 0; st.hist.push([st.bat ? V : null, st.stage]); if (st.hist.length > 144) st.hist.shift(); }
+  st.t += dt;
+  if (st.t >= 1440) st.t -= 1440;
+}
+
+const TERMS = [[2, RED, 'pv-pos', 'PV +'], [3, BLK, 'pv-neg', 'PV −'], [6, RED, 'bat-pos', 'BAT +'], [7, BLK, 'bat-neg', 'BAT −'], [10, RED, 'load-pos', 'LOAD +'], [11, BLK, 'load-neg', 'LOAD −']];
+
+// Node names change with wiring so the meter sees which terminals are really joined.
+function nodeOf(id) {
+  const neg = st.neg === 'battery';
+  return {
+    'bat-post-pos': 'B+', 'bat-post-neg': 'B-', 'panel-pos': 'P+', 'panel-neg': 'P-',
+    'bat-pos': st.bat ? 'B+' : 'cbat+', 'bat-neg': st.bat ? 'B-' : 'cbat-',
+    'pv-pos': st.pv ? 'P+' : 'cpv+', 'pv-neg': st.pv ? 'P-' : 'cpv-',
+    'load-pos': 'L+', 'load-neg': 'L-',
+    'dc-in-pos': st.load ? 'L+' : 'dc+', 'dc-in-neg': st.load ? (neg ? 'B-' : 'L-') : 'dc-',
+  }[id];
+}
+const anchorAttr = (id, label) => `data-anchor="${id}" data-node="${nodeOf(id)}" data-label="${label}"`;
+const dot = (id, label, at) => { const [x, y] = P(...at); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="#f2efe7" stroke="#1d1d1b" stroke-width="1.2" ${anchorAttr(id, label)}/>`; };
+
+function meterNets() {
+  const s = st.last, sun = s.sun || 0, n = {};
+  const voc = sun > 0.02 ? 21 + 3.5 * Math.min(1, sun * 1.3) : 0.3;
+  const V = st.bat ? s.V : vrest(st.ah / 26);
+  n['B+'] = { v: V, g: 'sys', imax: 300 }; n['B-'] = { v: 0, g: 'sys', imax: 300 };
+  const tied = st.pv && st.bat && !st.dead;
+  const charging = tied && st.mode === '12V' && s.duty > 0;
+  const pvV = charging ? s.duty * (V + 0.15) + (1 - s.duty) * voc : voc;
+  n['P+'] = { v: tied ? pvV : voc, g: tied ? 'sys' : 'pan', imax: 2.83 * sun };
+  n['P-'] = { v: 0, g: tied ? 'sys' : 'pan', imax: 2.83 * sun };
+  if (st.bat && !st.dead) {
+    n['L+'] = { v: V, g: 'sys', imax: 300 };
+    if (s.loadOn) n['L-'] = { v: 0.02, g: 'sys', imax: 300 };
+    else if (st.load && st.neg === 'load') n['L-'] = { v: V - 0.01, g: 'sys', imax: 0.6 };
+  }
+  return n;
+}
+
+function wireList() {
+  const s = st.last, neg = st.neg === 'battery', on = !!st.mode;
+  return [
+    { k: 'pvp', c: RED, p: [[10, 11, 1.5], [10, 18.5, 0], [3.5, 18.5, 0], [3.5, 17, 1.5]], on: st.pv, live: s.I > 0, rev: true },
+    { k: 'pvn', c: BLK, p: [[11, 11, 1.5], [11, 19.2, 0], [4.3, 19.2, 0], [4.3, 17, 1.5]], on: st.pv, live: s.I > 0 },
+    { k: 'bp', c: RED, p: [[14, 11, 1.5], [14, 13.5, 0], [13, 13.5, 0], [13, 13.5, 3.5], [13, 16, 3.5], [13, 16, 3]], top: 3, on: st.bat, live: on && Math.abs(s.I - (s.router ? .6 : 0)) > .05, rev: s.I < (s.router ? .6 : 0) },
+    { k: 'bn', c: BLK, p: [[15, 11, 1.5], [15, 12.8, 0], [16, 12.8, 0], [16, 12.8, 3.5], [16, 16, 3.5], [16, 16, 3]], top: 3, on: st.bat, live: on && Math.abs(s.I - (s.router ? .6 : 0)) > .05, rev: s.I >= (s.router ? .6 : 0) },
+    { k: 'lp', c: RED, p: [[18, 11, 1.5], [18, 14, 0], [21.5, 14, 0], [21.5, 15, 0.3]], on: st.load, live: s.router },
+    { k: 'ln', c: BLK, p: neg ? [[19, 11, 1.5], [19, 12.4, 0]] : [[19, 11, 1.5], [19, 13.4, 0], [22.8, 13.4, 0], [22.8, 15, 0.3]], on: st.load, live: s.router && !neg, rev: true },
+    { k: 'nb', c: BLK, p: [[22.8, 15, 0.3], [22.8, 14.6, 0], [17.4, 14.6, 0], [16.2, 16, 3.4]], top: 4, on: neg && st.load, live: s.router && neg, rev: true, hide: !neg },
+    { k: 'out', c: BLK, p: [[23.4, 16, 0.3], [24, 16, 0], [24.4, 17, 0.6]], on: st.load, live: s.router },
+  ];
+}
+
+function build() {
+  const s = st.last, on = !!st.mode && !st.dead, T = TYPES[st.type];
+  let o = wobbleDefs(st.wob) + `<g filter="url(#wob)">` + box(0, 0, -0.8, 30, 22, 0.8, '#e6dcc6');
+  const wires = wireList();
+  const drawW = (w, pts) => `<path class="wire${w.on ? '' : ' off'}" stroke="${w.c}" d="${path(pts)}"/><path class="flow${w.live ? ' live' : ''}${w.rev ? ' rev' : ''}" d="${path(pts)}"/>`;
+
+  const A = [1, 13, 4.5], B = [6, 13, 4.5], C = [6, 17, 1.5], D = [1, 17, 1.5];
+  o += line([1.5, 13, 0], [1.5, 13, 4.3], 'class="ink" stroke-width="2.5"') + line([5.5, 13, 0], [5.5, 13, 4.3], 'class="ink" stroke-width="2.5"');
+  o += `<g class="part" data-part="panel">` + poly([P(...A), P(...B), P(...C), P(...D)], '#c9ced2') + poly([P(1.3, 13.3, 4.3), P(5.7, 13.3, 4.3), P(5.7, 16.7, 1.7), P(1.3, 16.7, 1.7)], s.sun > 0 ? '#2c4a96' : '#22345f') + `</g>`;
+  o += line([1.5, 17, 0], [1.5, 17, 1.4], 'class="ink" stroke-width="2.5"') + line([5.5, 17, 0], [5.5, 17, 1.4], 'class="ink" stroke-width="2.5"');
+
+  o += `<g class="part" data-part="ctrl">` + box(8, 3, 0, 14, 8, 3, '#3a4256') + `</g>`;
+  if (!st.see) {
+    o += `<g transform="${faceZ(8, 3, 3)}" class="part" data-part="lcd">`;
+    o += `<rect x="${2 * S}" y="${1.2 * S}" width="${7 * S}" height="${3.8 * S}" rx="4" fill="${!on ? '#7d8573' : st.mode === '24V' ? '#f0a596' : '#b9dca0'}" class="ink"/>`;
+    o += `<text x="${5.5 * S}" y="${3.3 * S}" text-anchor="middle" font-size="22" font-weight="700" fill="#1d2a18">${!on ? (st.dead ? '' : '') : st.mode === '24V' ? '24V ?!' : s.V.toFixed(1) + 'V'}</text>`;
+    o += `<text x="${5.5 * S}" y="${4.5 * S}" text-anchor="middle" font-size="11" font-weight="700" fill="#1d2a18">${!on ? '' : st.mode === '24V' ? 'BAT LOW (24V)' : `${s.I > 0 ? '☀→▮ ' + st.stage.toUpperCase() : ''} ${st.cut ? 'LVD' : s.loadOn ? 'LOAD' : ''} ${st.type}`}</text>`;
+    [['☀', 3], ['▮', 5.5], ['💡', 8]].forEach(([g, u]) => o += `<text x="${u * S}" y="${6.6 * S}" text-anchor="middle" font-size="14" fill="#e9e4d6">${g}</text>`);
+    o += `<circle cx="${11 * S}" cy="${3 * S}" r="9" fill="#d8d2c4" class="ink"/><circle cx="${12.6 * S}" cy="${3 * S}" r="9" fill="#d8d2c4" class="ink"/>`;
+    o += `<text x="${11.8 * S}" y="${5 * S}" text-anchor="middle" font-size="9" fill="#e9e4d6">MENU  −</text><text x="${11.5 * S}" y="${7.2 * S}" text-anchor="middle" font-size="10" font-weight="700" fill="#e9e4d6">10A PWM</text></g>`;
+  } else {
+    o += `<g transform="${faceZ(8, 3, 3)}">`;
+    o += `<rect x="${0.4 * S}" y="${0.4 * S}" width="${13.2 * S}" height="${7.2 * S}" fill="#2f6b4a" class="ink"/>`;
+    const tr = (pts, col, w = 3) => `<polyline points="${pts.map(([u, v]) => `${u * S},${v * S}`).join(' ')}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linejoin="round" opacity=".9"/>`;
+    o += tr([[2, 8], [2, 4.5], [3, 4.5]], '#e8a33a') + tr([[4.6, 4.5], [6, 4.5], [6, 8]], '#e8a33a');
+    o += tr([[6, 6.5], [10, 6.5], [10, 8]], '#e8a33a', 2.5);
+    o += tr([[3, 8], [3, 7.2], [7, 7.2], [7, 8]], '#9aa6a0') + tr([[11, 8], [11, 6.8], [12, 6.8], [12, 6]], '#9aa6a0') + tr([[12, 5], [12, 4.2], [7.4, 4.2], [7.4, 7.2]], '#9aa6a0');
+    const chip = (id, u, v, w, h, txt, glow) => `<g class="part${glow ? ' glow' : ''}" data-part="${id}"><rect x="${u * S}" y="${v * S}" width="${w * S}" height="${h * S}" rx="2" fill="${glow ? '#f3c33b' : '#1e1e20'}" class="ink"/><text x="${(u + w / 2) * S}" y="${(v + h / 2) * S + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="${glow ? '#1d1d1b' : '#ddd'}">${txt}</text></g>`;
+    o += chip('q1', 3, 3.8, 1.6, 1.4, 'Q1', s.duty > 0 && on && st.phase % 2 === 0);
+    o += chip('q2', 11.3, 5, 1.6, 1.4, 'Q2', s.loadOn);
+    o += chip('mcu', 5.6, 1.2, 2.6, 2.2, 'MCU', on);
+    o += chip('usb', 10.6, 1.2, 2.4, 1.4, 'USB 5V', on);
+    o += `<text x="${4.5 * S}" y="${6.95 * S}" font-size="9" fill="#cfe8d8">GND (−) common</text><text x="${7.8 * S}" y="${6.3 * S}" font-size="9" fill="#ffe2a8">+ straight to LOAD+</text></g>`;
+  }
+  o += `<g transform="${faceY(8, 11, 0)}" class="part" data-part="term">`;
+  TERMS.forEach(([u, c, id, label]) => o += `<rect x="${u * S - 7}" y="${-2.2 * S}" width="14" height="14" fill="${c}" class="ink"/><circle cx="${u * S}" cy="${-1.75 * S}" r="3.5" fill="#ddd" ${anchorAttr(id, label)}/>`);
+  [['☀ PV', 2.5], ['▮ BAT', 6.5], ['💡 LOAD', 10.5]].forEach(([t, u]) => o += `<text x="${u * S}" y="${-0.4 * S}" text-anchor="middle" font-size="10" font-weight="700" fill="#e9e4d6">${t}</text>`);
+  o += `<circle cx="${13 * S}" cy="${-2 * S}" r="4" fill="${on && s.I > 0 ? '#3fae66' : '#555'}" class="ink"/><circle cx="${13 * S}" cy="${-1 * S}" r="4" fill="${on && s.loadOn ? '#f3c33b' : on && st.cut ? '#d6452f' : '#555'}" class="ink"/></g>`;
+  o += `<g transform="${faceX(22, 3, 0)}" class="part" data-part="usb">` + [3, 5].map(w => `<rect x="${w * S - 8}" y="${-2 * S}" width="16" height="9" fill="#ddd" class="ink"/>`).join('') + `</g>`;
+
+  wires.filter(w => !w.hide).forEach(w => o += drawW(w, w.top ? w.p.slice(0, w.p.length - w.top + 1) : w.p));
+  o += `<g class="part" data-part="battery">` + box(12, 15, 0, 5, 4, 3, '#2f2f33') + box(12.6, 15.6, 3, 0.8, 0.8, 0.3, RED) + box(15.6, 15.6, 3, 0.8, 0.8, 0.3, '#222');
+  o += `<g transform="${faceY(12, 19, 0)}"><text x="${2.5 * S}" y="${-1.6 * S}" text-anchor="middle" font-size="11" font-weight="700" fill="#eee">EXIDE 26Ah</text><rect x="${0.5 * S}" y="${-1 * S}" width="${4 * S}" height="6" fill="none" stroke="#ddd"/><rect x="${0.5 * S}" y="${-1 * S}" width="${4 * S * st.ah / 26}" height="6" fill="#9be3b4"/></g></g>`;
+  wires.filter(w => w.top && !w.hide).forEach(w => o += drawW(w, w.p.slice(w.p.length - w.top - 1)));
+  o += dot('bat-post-pos', 'Battery post +', [13, 16, 3.3]) + dot('bat-post-neg', 'Battery post −', [16, 16, 3.3]);
+  o += dot('panel-pos', 'Panel lead +', [3.5, 17, 1.5]) + dot('panel-neg', 'Panel lead −', [4.3, 17, 1.5]);
+  o += `<g class="part" data-part="dcdc">` + box(21, 15, 0, 2.4, 1.6, 0.6, '#2f8a55') + dot('dc-in-pos', 'DC-DC IN+', [21.5, 15.3, 0.6]) + dot('dc-in-neg', 'DC-DC IN−', [22.8, 15.3, 0.6]) + `</g>`;
+  o += `<g class="part" data-part="dcdc">` + box(24, 16.5, 0, 4.5, 3, 1.3, '#eceae4') + line([25, 17, 1.3], [25, 17, 4], 'class="ink" stroke-width="3"') + line([27.5, 17, 1.3], [27.5, 17, 4], 'class="ink" stroke-width="3"');
+  o += `<g transform="${faceY(24, 19.5, 0)}">` + [1, 2, 3].map(u => `<circle cx="${u * S}" cy="${-0.65 * S}" r="2.5" fill="${s.router ? '#3fae66' : '#999'}"/>`).join('') + `</g></g>`;
+  o += `</g>`;
+
+  const sel = st.sel, lab = (at, dx, dy, t, id) => { const [x, y] = P(...at); return pill(x + dx, y + dy, t, id, x, y, sel); };
+  o += lab([15, 3, 3], 40, -40, 'CHARGE CONTROLLER 10A PWM', 'ctrl');
+  o += lab([3.5, 13, 4.5], 30, -50, 'PANEL', 'panel');
+  o += lab([12, 19, 1.5], -70, 30, 'BATTERY 12V', 'battery');
+  o += lab([26, 18, 1.3], 70, 20, st.neg === 'battery' ? 'DC-DC IN− → BATTERY − ✗' : 'DC-DC → ROUTER', 'dcdc');
+  o += lab([10.5, 11, 1], -110, 60, 'TERMINALS', 'term');
+  if (st.see) { o += lab([11.8, 7.5, 3], -120, -20, 'Q1 PV SWITCH', 'q1'); o += lab([20, 8.6, 3], 90, -30, 'Q2 LOAD (−) SWITCH', 'q2'); o += lab([14.5, 5.2, 3], 40, -70, 'MCU', 'mcu'); }
+  return o;
+}
+
+function drawCharts() {
+  const s = st.last, d = st.mode === '12V' ? s.duty : 0;
+  let w = `<text x="10" y="16">Duty ${(d * 100).toFixed(0)}% · ${st.mode === '12V' && s.avail > 0 ? st.stage.toUpperCase() : 'no charge'}</text>`;
+  const x0 = 10, y1 = 34, y0 = 84, per = 50, off = (st.phase * 6) % per;
+  let p = `M${x0},${y0}`;
+  for (let x = -per; x < 400; x += per) {
+    const a = x0 + x + off, b = a + per * d;
+    if (d > 0.995) p += ` L${Math.max(x0, a)},${y1} L${Math.min(410, a + per)},${y1}`;
+    else if (d > 0.005) p += ` L${Math.max(x0, a)},${y0} L${Math.max(x0, a)},${y1} L${Math.max(x0, Math.min(410, b))},${y1} L${Math.max(x0, Math.min(410, b))},${y0} L${Math.max(x0, Math.min(410, a + per))},${y0}`;
+    else p += ` L${Math.min(410, a + per)},${y0}`;
+  }
+  w += `<path d="${p}" fill="none" stroke="#2c4a96" stroke-width="2"/><text x="372" y="${y1 + 4}" font-size="9">ON</text><text x="372" y="${y0 + 4}" font-size="9">OFF</text>`;
+  const pwm = s.I * s.V, mppt = Math.min(55 * (s.sun || 0) * 0.92, pwm > 0 && st.stage !== 'bulk' ? pwm : 1e9);
+  w += `<text x="10" y="108">Now: PWM ${pwm.toFixed(0)}W · with MPPT ~${(st.mode === '12V' && st.pv ? mppt : 0).toFixed(0)}W ${st.stage !== 'bulk' && pwm > 0 ? '(same near full)' : ''}</text>`;
+  $('wave').innerHTML = w;
+
+  const T = TYPES[st.type], hx = i => 30 + i * 380 / 144, vy = v => 150 - (v - 11) / 4 * 130;
+  let h = `<line x1="30" y1="150" x2="410" y2="150" stroke="#1d1d1b"/><line x1="30" y1="20" x2="30" y2="150" stroke="#1d1d1b"/>`;
+  [[T.absorb, 'absorb', '#d6452f'], [T.float, 'float', '#3fae66'], [st.rec, 'reconnect', '#8a8577'], [st.lvd, 'LVD', '#e0a72c']].forEach(([v, t, c]) => h += `<line x1="30" x2="410" y1="${vy(v)}" y2="${vy(v)}" stroke="${c}" stroke-dasharray="4 4"/><text x="408" y="${vy(v) - 3}" text-anchor="end" fill="${c}">${t} ${v}V</text>`);
+  for (let v = 11; v <= 15; v++) h += `<text x="26" y="${vy(v) + 3}" text-anchor="end">${v}</text>`;
+  const pts = st.hist.map(([v], i) => v == null ? null : `${hx(i).toFixed(1)},${vy(v).toFixed(1)}`).filter(Boolean);
+  if (pts.length > 1) h += `<polyline points="${pts.join(' ')}" fill="none" stroke="#2c4a96" stroke-width="2"/>`;
+  else h += `<text x="220" y="90" text-anchor="middle" fill="#8a8577">Connect the battery and let time run</text>`;
+  $('hist').innerHTML = h;
+}
+
+function render() {
+  step(0);
+  const s = st.last, on = !!st.mode && !st.dead;
+  $('fig').innerHTML = build();
+  drawCharts();
+  $('sTime').textContent = hhmm(st.t);
+  $('sBatt').textContent = st.bat ? `${s.V.toFixed(2)}V ${Math.round(st.ah / 26 * 100)}%` : '—';
+  $('sStage').textContent = st.dead ? 'BURNT' : st.mode === '12V' && s.avail > 0 ? st.stage.toUpperCase() : on ? 'NO SUN' : 'OFF';
+  $('sStage').className = st.dead ? 'bad' : '';
+  $('sDuty').textContent = st.mode === '12V' ? `${(s.duty * 100).toFixed(0)}%` : '—';
+  $('sMode').textContent = st.dead ? '—' : !st.mode ? 'OFF' : `${st.mode} · ${st.cut ? 'CUT' : s.router ? 'ON' : 'off'}`;
+  $('sMode').className = st.mode === '24V' || st.cut ? 'bad' : '';
+  $('oTime').textContent = hhmm(st.t); $('cTime').value = Math.floor(st.t);
+  $('oLvd').textContent = st.lvd.toFixed(1) + 'V'; $('oRec').textContent = st.rec.toFixed(1) + 'V'; $('oWob').textContent = st.wob; $('oTamb').textContent = st.tamb + '°C';
+  $('bLoad').textContent = st.load ? 'Load (router) off' : 'Load (router) on'; $('bLoad').classList.toggle('on', st.load);
+  $('bNeg').textContent = `DC-DC IN− : ${st.neg === 'load' ? 'LOAD−' : 'Battery− ✗'}`; $('bNeg').classList.toggle('warn', st.neg === 'battery');
+  $('bSee').classList.toggle('on', st.see);
+
+  const T = TYPES[st.type];
+  $('typeCard').innerHTML = `<div class="k">${st.type} selected</div><table>${Object.entries(TYPES).map(([k, v]) => `<tr><td>${k === st.type ? '▶ ' : ''}${k}</td><td>absorb ${v.absorb}V · float ${v.float}V</td></tr>`).join('')}<tr><td>Note</td><td>Typical PWM values. Confirm in the MagiDeal manual.</td></tr></table>`;
+  const cv = coldVoc(), lim = st.maxPv;
+  $('maxCard').innerHTML = `<div class="k">${lim ? lim + 'V rating' : 'Label not checked yet'}</div><table><tr><td>Panel Voc (25°C)</td><td>24.5V</td></tr><tr><td>${st.tamb}°C morning</td><td>~${cv.toFixed(2)}V (−0.28%/°C typical)</td></tr><tr><td>Margin</td><td>${lim ? (lim - cv).toFixed(2) + 'V' : '?'}</td></tr><tr><td>Verdict</td><td>${!lim ? 'Check the manual/sticker' : lim - cv < 1 ? '⚠ Risky. Get a higher-rated controller' : '✓ Safe'}</td></tr></table>`;
+
+  let h = '', bad = false;
+  if (st.dead) { h = 'The controller burnt out. Use "Fit a new controller" in the menu.'; bad = true; }
+  else if (st.mode === '24V') { h = 'Wrong 24V mode. Power-up → Disconnect everything, then battery first.'; bad = true; }
+  else if (!st.mode) h = 'Use the Power-up menu: battery first.';
+  else if (st.type !== 'SLD') h = `Battery type is ${st.type}. Pick SLD for the Exide SMF.`;
+  else if (st.lvd < 11.8) h = `LVD ${st.lvd}V is too low. Set 11.8–12.0V.`;
+  else if (st.neg === 'battery') { h = 'DC-DC IN− is on battery −. The LVD cannot cut the router.'; bad = true; }
+  else if (!st.load) h = 'Turn the load on and run into the night. Watch LVD and reconnect.';
+  else h = 'Let time run: bulk → absorb → float. Watch Q1 switch in see-through.';
+  $('hint').textContent = h; $('hint').classList.toggle('bad', bad);
+}
+
+Multimeter.setModel({ nets: meterNets });
+Multimeter.on(e => {
+  if (e.type === 'reading' && e.knob === 'V' && !e.ac) {
+    log(`📟 ${e.text} (red ${e.red}, black ${e.black})`);
+    const pair = (a, b) => (e.red === a && e.black === b) || (e.red === b && e.black === a);
+    if (pair('pv-pos', 'pv-neg') && st.last.duty > 0.5 && st.mode === '12V' && Math.abs(e.value) < 16) { tick('pvmeter'); log('PV terminals read close to the battery voltage: PWM pulls the panel down to the battery.'); }
+    if (pair('load-pos', 'load-neg') && st.cut && Math.abs(e.value) < 0.5) { tick('loadmeter'); log('LOAD+ to LOAD− reads ~0V: Q2 opened the negative side, LOAD+ is still at battery voltage.'); }
+  }
+  if (e.type === 'short') log(`💥 Short through the meter's 10A socket (~${Math.round(e.amps)}A). Move the red plug back to VΩmA.`, 'e');
+});
+$('bMeter').onclick = () => { Multimeter.set({ knob: 'V', ac: false, socket: 'VmA' }); Multimeter.attach('red', 'pv-pos'); Multimeter.attach('black', 'pv-neg'); log('Meter on the PV terminals, V DC.'); };
+bindMenus(actions, render);
+bindFigClicks($('fig'), select);
+$('bLoad').onclick = () => { st.load = !st.load; log(st.load ? 'Router on (from the LOAD terminal, through the DC-DC).' : 'Router off.'); render(); };
+$('bNeg').onclick = () => { st.neg = st.neg === 'load' ? 'battery' : 'load'; log(st.neg === 'load' ? 'DC-DC IN− back on LOAD−. The LVD can cut the router again ✓' : 'DC-DC IN− on battery − (wrong).', st.neg === 'load' ? '' : 'w'); render(); };
+$('bSee').onclick = () => { st.see = !st.see; if (st.see) log('See-through: Q1 sits on the panel line, Q2 on the LOAD− line. LOAD+ is tied straight to battery +.'); render(); };
+$('bCmp').onclick = () => {
+  const s = st.last;
+  if (st.mode !== '12V' || !st.pv || !s.sun) return log('Power up correctly first, and measure in daylight.', 'w');
+  const pwm = s.avail * s.V, mppt = 55 * s.sun * 0.92;
+  log(`Available from the panel now: PWM ${s.avail.toFixed(2)}A × ${s.V.toFixed(1)}V = ${pwm.toFixed(0)}W · MPPT ~${mppt.toFixed(0)}W (at Vmp 21V, ~92% efficiency typical). Difference ~${Math.max(0, mppt / Math.max(pwm, 1) * 100 - 100).toFixed(0)}%.`);
+  tick('mppt');
+};
+const num = (id, key, fn) => $(id).oninput = e => { st[key] = +e.target.value; if (fn) fn(); render(); };
+num('cTime', 't'); num('cWob', 'wob');
+num('cLvd', 'lvd', () => { if (st.lvd >= 11.8 && st.lvd <= 12.0) tick('lvd'); });
+num('cRec', 'rec');
+num('cTamb', 'tamb', () => { if (st.maxPv) tick('maxpv'); });
+$('cMax').onchange = e => { st.maxPv = +e.target.value; if (st.maxPv) { tick('maxpv'); log(`Max PV input ${st.maxPv}V. Cold-morning Voc ~${coldVoc().toFixed(2)}V.`, st.maxPv - coldVoc() < 1 ? 'w' : ''); } render(); };
+$('cType').onchange = e => { st.type = e.target.value; log(`Battery type: ${st.type} (absorb ${TYPES[st.type].absorb}V, float ${TYPES[st.type].float}V).`); if (st.type === 'SLD') tick('type'); render(); };
+$('cWx').onchange = e => { st.wx = +e.target.value; render(); };
+$('cSpeed').onchange = e => { st.speed = +e.target.value; };
+$('cPlay').onclick = () => { st.playing = !st.playing; $('cPlay').textContent = st.playing ? '❚❚' : '▶'; };
+
+renderQuiz([
+  ['At what voltage does a PWM controller run the panel?', ['Vmp ~21V', 'Battery voltage ~13–14V', 'Voc 24.5V'], 1, 'When Q1 is on, the panel is tied straight to the battery, so the 21V headroom is wasted. MPPT recovers it.'],
+  ['Why does the duty cycle drop in the absorb stage?', ['The panel is hot', 'The battery is near full, so less current is needed to hold the voltage', 'Night is coming'], 1, 'To hold the absorb voltage (SLD ~14.4V), Q1 stays on for less time.'],
+  ['Which side do many PWM controllers switch the LOAD on?', ['+ side', '− side', 'They never cut it'], 1, 'So connect DC-DC IN− to LOAD− only. On battery − the LVD is bypassed.'],
+  ['The LCD shows 24V but the battery is 12V. Fix?', ['Type 12V into the settings', 'Disconnect everything, connect battery first, then panel', 'Cover the panel'], 1, 'Auto-detect only runs at power-up. Power up again in the right order.'],
+  ['Why LVD at 12.0V instead of 10.8V?', ['The router runs faster', 'The battery stops near 50%, so the SMF lasts longer', 'The panel charges more'], 1, '12.2V ≈ 50%. Voltage sags a little under load, hence an 11.8–12.0V LVD.'],
+]);
+log('Controller is off. Start from the Power-up menu: battery first.');
+render();
+setInterval(() => { if (st.playing) { st.phase++; step(st.speed / 5); render(); } }, 200);
+</script>
+</body>
+</html>

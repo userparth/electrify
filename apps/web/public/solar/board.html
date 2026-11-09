@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solar Bench — Build board</title>
+<link rel="stylesheet" href="bench.css">
+<style>
+main{max-width:1400px}
+.stats{grid-template-columns:repeat(6,auto)}
+.stat b{font-size:16px;white-space:nowrap}
+.stage{display:grid;grid-template-columns:190px 1fr;gap:12px}
+.palette{display:flex;flex-direction:column;gap:6px;max-height:720px;overflow:auto;padding:2px 6px 6px 2px}
+.pal{font:inherit;font-size:12px;font-weight:600;background:var(--paper);border:1.6px solid var(--ink);border-radius:12px;padding:5px 10px;cursor:grab;box-shadow:2px 2px 0 var(--ink);text-align:left;color:var(--ink);touch-action:none;user-select:none}
+.pal small{display:block;font-weight:400;color:var(--mute);font-size:10px}
+.ghost{position:fixed;z-index:80;pointer-events:none;opacity:.85;transform:translate(-50%,-50%)}
+svg#board{width:100%;height:auto;display:block;touch-action:none;user-select:none}
+.bpart{cursor:move}
+.term{cursor:crosshair}
+.term:hover{stroke-width:3}
+.bwire{cursor:pointer}
+.sel-box{fill:none;stroke:#3b6fd8;stroke-width:1.6;stroke-dasharray:5 4}
+.ctl output{float:right;font-size:11px;font-weight:700}
+.insp .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.insp label{display:block;font-size:12px;margin-top:6px}
+.insp input[type=range]{width:100%;accent-color:var(--ink)}
+.howto li{margin-bottom:4px}
+kbd{border:1.4px solid var(--ink);border-radius:5px;padding:0 5px;font-size:11px;background:var(--paper)}
+</style>
+</head>
+<body>
+<div class="app">
+<aside id="side" data-cur="board"></aside>
+<script src="bench.js"></script>
+<main>
+  <div class="head">
+    <div>
+      <h2>🛠 Build board</h2>
+      <div class="kicker">drag parts on · wire terminal to terminal · it really runs</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Time</span><b id="sTime">—</b></div>
+      <div class="stat"><span>Sun</span><b id="sSun">—</b></div>
+      <div class="stat"><span>Battery</span><b id="sBatt">—</b></div>
+      <div class="stat"><span>Solar in</span><b id="sIn">—</b></div>
+      <div class="stat"><span>Loads</span><b id="sOut">—</b></div>
+      <div class="stat"><span>Status</span><b id="sStatus">—</b></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div>
+      <div class="palette" id="palette"></div>
+    </div>
+    <div style="position:relative">
+      <div class="row" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+        <button class="btn" id="bExample">Load example: full setup</button>
+        <button class="btn" id="bClear">Clear board</button>
+        <button class="btn" id="bDelete">Delete selected <kbd>Del</kbd></button>
+        <button class="btn" id="bMeter">🔧 Multimeter <kbd>M</kbd></button>
+      </div>
+      <div class="hint" id="hint"></div>
+      <svg id="board" viewBox="0 0 1000 700" aria-label="Build board"></svg>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="ctl"><span>Time of day <output id="oTime"></output></span><input type="range" id="cTime" min="0" max="1439" value="600"></div>
+    <div class="ctl"><span>Weather · speed</span>
+      <select id="cWx"><option value="1">Clear sun</option><option value="0.55">Cloudy</option><option value="0.2">Rain</option></select>
+      <select id="cSpeed"><option value="0.5">1x</option><option value="2" selected>4x</option><option value="6">12x</option></select>
+      <button class="btn" id="cPlay" style="padding:1px 10px">❚❚</button>
+    </div>
+    <div class="ctl"><span>Hand-drawn wobble <output id="oWob"></output></span><input type="range" id="cWob" min="0" max="5" step="0.5" value="1"></div>
+    <div class="ctl"><span>New wire colour</span>
+      <select id="cWire"><option value="auto">Auto (+ red, − black)</option><option value="#d6452f">Red</option><option value="#262624">Black</option><option value="#3a6ed6">Blue</option><option value="#e0a72c">Yellow</option></select>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h3>Selected</h3>
+      <div class="card insp" id="insp"><div class="k">Nothing selected</div>Click a part or a wire.</div>
+      <h3>How to use</h3>
+      <ol class="howto note">
+        <li><b>Add a part:</b> drag it from the left onto the board (or click it).</li>
+        <li><b>Move:</b> drag the part's body.</li>
+        <li><b>Wire:</b> press on a terminal dot and drag to another terminal dot.</li>
+        <li><b>Remove:</b> click a part or wire, then <kbd>Del</kbd> / <kbd>Backspace</kbd>.</li>
+        <li><b>Measure:</b> <kbd>M</kbd> opens the multimeter; drag its probes onto any dot. With the red plug in 10A the meter really is in the circuit.</li>
+        <li><b>Run:</b> time, weather and speed are below the board. Your layout is saved in this browser.</li>
+      </ol>
+    </div>
+    <div>
+      <h3>Serial monitor (event log)</h3>
+      <div class="log" id="log" style="height:260px"></div>
+      <h3>Things to try</h3>
+      <ul class="note">
+        <li>Build the full setup yourself, in the safe order: battery → fuse → controller, then panel, then loads.</li>
+        <li>Connect the panel before the battery and see the controller pick 24V.</li>
+        <li>Short battery + to − with a wire, with and without a fuse in the path.</li>
+        <li>Feed the router straight from the battery, then through the DC-DC. Turn the trim pot to 16V.</li>
+        <li>Put the INA226 shunt in the battery + line and watch its current at noon and at night.</li>
+        <li>Swap a router's barrel wires. Run the inverter at 350W.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+</div>
+<script src="kit.js"></script>
+<script src="components/registry.js"></script>
+<script src="components/solar-panel.js"></script>
+<script src="components/charge-controller.js"></script>
+<script src="components/battery.js"></script>
+<script src="components/fuse.js"></script>
+<script src="components/dc-fan.js"></script>
+<script src="components/dcdc-converter.js"></script>
+<script src="components/wifi-router.js"></script>
+<script src="components/phone-usb.js"></script>
+<script src="components/inverter.js"></script>
+<script src="components/esp32.js"></script>
+<script src="components/ina226.js"></script>
+<script src="components/mc4-connector.js"></script>
+<script src="components/circuit.js"></script>
+<script src="components/multimeter.js"></script>
+<script>
+const S = 14, OX = 420, OY = 150, I = iso(S, OX, OY), BW = 46, BD = 32;
+BenchParts.compact = true;
+const svg = $('board'), log = makeLog(() => hhmm(SIM.t));
+const SIM = { t: 600, wx: 1, playing: true, speed: 2, wob: 1 };
+const ICON = { panel: '☀️', controller: '🎛', battery: '🔋', fuse: '🟨', fan: '🌀', dcdc: '🔁', router: '📶', phone: '📱', inverter: '⚡', esp32: '🧠', ina226: '📏', mc4: '🔌' };
+const OFFSET = { panel: [3, 3], controller: [4, 1], battery: [4, 2.5], fuse: [3, 2], fan: [3, 3], dcdc: [4, 2], router: [3, 2], phone: [1.5, 3], inverter: [4, 2], esp32: [4, 1.5], ina226: [3, 2], mc4: [3, 2] };
+const USER = {
+  panel: [], controller: ['load', 'lvd', 'lvdOff'], battery: ['soc'], fuse: ['rating', 'blown'], fan: ['on'], dcdc: ['vset', 'type'],
+  router: ['volts'], phone: ['draw'], inverter: ['on', 'watts'], esp32: ['led', 'pullups'], ina226: ['shunt'], mc4: ['mated', 'crimp'],
+};
+
+let B = load() || { parts: [], wires: [], next: 1 };
+for (const p of B.parts) if (p.type === 'controller' && p.state.lvdOff == null) p.state.lvdOff = true;
+let sel = null, RT = {}, SOL = null, drag = null, wireDrag = null, TERM = {}, dirty = true, warned = new Set();
+
+function load() { try { return JSON.parse(localStorage.getItem('bench.board.v1')); } catch (e) { return null; } }
+function save() { localStorage.setItem('bench.board.v1', JSON.stringify(B)); }
+const rt = p => RT[p.uid] || (RT[p.uid] = {});
+const def = p => BenchParts.get(p.type);
+function warn(key, cond, msg, cls = 'w') { if (cond && !warned.has(key)) { warned.add(key); log(msg, cls); } if (!cond) warned.delete(key); }
+const sunNow = () => { const h = SIM.t / 60; return h < 6 || h > 18 ? 0 : Math.sin(Math.PI * (h - 6) / 12) * SIM.wx; };
+const ocvOf = soc => BenchParts.lerpTable([[0, 11.5], [25, 11.9], [50, 12.2], [75, 12.4], [100, 12.7]], soc);
+const SHORT = { panel: 'Panel', controller: 'Controller', battery: 'Battery', fuse: 'Fuse', fan: 'Fan', dcdc: 'DC-DC', router: 'Router', phone: 'Phone', inverter: 'Inverter', esp32: 'ESP32', ina226: 'INA226', mc4: 'MC4' };
+const partName = p => `${SHORT[p.type] || p.type} ${B.parts.filter(q => q.type === p.type).indexOf(p) + 1}`;
+const clampExp = x => Math.exp(Math.min(x, 30));
+
+const M = {
+  panel: {
+    stamp(p, r, T, E) {
+      const g = sunNow(), isc = 2.83 * g, voc = g > 0.005 ? 24.5 * (1 - 0.0028 * 20 * g) + 0.5 * Math.log(g) : 0, a = 1.45, bypass = Circuit.diode(1e-9, 0.05);
+      r.isc = isc; r.voc = voc;
+      E.push(r.e = { t: 'N', a: T('pv-'), b: T('pv+'), f: v => {
+        const ex = clampExp((-v - voc) / a), [di, dg] = bypass(v);
+        return [isc * (1 - ex) + di, isc / a * ex + dg];
+      } });
+    },
+    post(p, r, V, cur) { r.i = cur(r.e); r.w = Math.max(0, r.i * (V('pv+') - V('pv-'))); },
+    show: (p, r) => ({ sun: Math.round(sunNow() * 100), temp: Math.round(25 + 20 * sunNow()) }),
+  },
+  battery: {
+    stamp(p, r, T, E) {
+      // An empty lead-acid still rests near 10.5–11 V but can no longer push current: internal resistance climbs.
+      const soc = p.state.soc, flat = Math.max(0, 2 - soc) / 2;
+      r.ocv = ocvOf(soc) - Math.max(0, 10 - soc) * 0.08; r.rint = 0.03 + flat * 5;
+      E.push({ t: 'R', a: T('b+'), b: T('b-'), r: r.rint }, { t: 'I', a: T('b-'), b: T('b+'), i: r.ocv / r.rint });
+    },
+    post(p, r, V, cur, dtH) {
+      r.v = V('b+') - V('b-'); r.i = (r.ocv - r.v) / r.rint;
+      warn(p.uid + 'empty', p.state.soc <= 2, `🪫 ${partName(p)} is completely empty. Everything stops until it is charged. Draining lead-acid to 0% causes sulfation.`, 'e');
+      p.state.soc = Math.max(0, Math.min(100, p.state.soc - r.i * dtH / 26 * 100));
+      warn(p.uid + 'short', r.i > 60, `💥 ${partName(p)} is delivering ${r.i.toFixed(0)}A — that is a short circuit!`, 'e');
+      warn(p.uid + 'low', r.v < 12.2 && r.i > 0.05, `${partName(p)} below 12.2V (~50%). Lead-acid life drops fast from here.`);
+    },
+    show: (p, r) => ({ soc: Math.round(p.state.soc), load: Math.max(0, Math.min(10, r.i || 0)) }),
+  },
+  fuse: {
+    stamp(p, r, T, E) { E.push(r.e = { t: 'R', a: T('f1'), b: T('f2'), r: p.state.blown ? 1e9 : 0.008 }); },
+    post(p, r, V, cur, dtH) {
+      const i = Math.abs(cur(r.e)), rating = +p.state.rating;
+      r.i = i;
+      if (p.state.blown) return;
+      r.heat = i > 1.1 * rating ? (r.heat || 0) + Math.max(dtH * 60, 0.25) : 0;
+      if (i > 2 * rating || r.heat > 2) { p.state.blown = true; log(`💥 ${partName(p)} (${rating}A) blew at ${i.toFixed(1)}A. It protected the wires.`, 'e'); dirty = true; }
+    },
+    show: (p, r) => ({ amps: Math.min(30, r.i || 0) }),
+  },
+  fan: {
+    stamp(p, r, T, E) {
+      E.push(r.e = p.state.on ? { t: 'N', a: T('fan+'), b: T('fan-'), f: v => v > 0 ? [v / 14.4, 1 / 14.4] : [v * 1e-6, 1e-6] } : { t: 'R', a: T('fan+'), b: T('fan-'), r: 1e9 });
+    },
+    post(p, r, V, cur) { r.v = V('fan+') - V('fan-'); r.i = cur(r.e); r.w = Math.max(0, r.v * r.i); warn(p.uid + 'rev', p.state.on && r.v < -3, `${partName(p)}: polarity reversed, a brushless DC fan will not spin.`); },
+    show: (p, r) => ({ on: p.state.on && (r.v || 0) > 6, volts: Math.max(10, Math.min(14.4, r.v || 0)) }),
+  },
+  dcdc: {
+    stamp(p, r, T, E) {
+      const vin = r.vin || 0, vset = +p.state.vset, bb = p.state.type === 'bb';
+      r.vout = bb ? (vin > 5 && vin < 40 ? vset : 0) : (vin > 4 ? Math.min(vset, vin - 1.5) : 0);
+      E.push({ t: 'R', a: T('in-'), b: T('out-'), r: 0.005 });
+      if (r.vout > 0) {
+        E.push(r.eo = { t: 'R', a: T('out+'), b: T('out-'), r: 0.05 }, { t: 'I', a: T('out-'), b: T('out+'), i: r.vout / 0.05 });
+        const pin = (r.pout || 0) / 0.9 + 0.15;
+        E.push({ t: 'R', a: T('in+'), b: T('in-'), r: Math.max(vin * vin / pin, 0.3) });
+      } else { r.eo = null; E.push({ t: 'R', a: T('in+'), b: T('in-'), r: 1e5 }); }
+    },
+    post(p, r, V) {
+      r.vin = V('in+') - V('in-');
+      const vo = V('out+') - V('out-'), io = r.vout > 0 ? (r.vout - vo) / 0.05 : 0;
+      r.pout = Math.max(0, vo * io); r.w = r.pout;
+      warn(p.uid + 'ol', io > 3.5, `${partName(p)} overloaded (${io.toFixed(1)}A out). These boards are ~2–3A.`);
+    },
+    show: (p, r) => ({ vin: +(r.vin || 0).toFixed(1) }),
+  },
+  router: {
+    stamp(p, r, T, E) { E.push(r.e = { t: 'R', a: T('centre'), b: T('sleeve'), r: r.dead || (r.v || 0) < -0.5 ? 1e9 : (+p.state.volts) ** 2 / 7 }); },
+    post(p, r, V, cur) {
+      const vr = +p.state.volts; r.v = V('centre') - V('sleeve'); r.i = cur(r.e);
+      if (!r.dead && r.v > vr * 1.35) { r.dead = true; log(`💥 ${partName(p)}: ${r.v.toFixed(1)}V on a ${vr}V router. It is dead.`, 'e'); dirty = true; }
+      r.ok = !r.dead && r.v >= 0.85 * vr && r.v <= 1.15 * vr;
+      r.w = r.ok ? Math.max(0, r.v * r.i) : 0;
+      warn(p.uid + 'rev', r.v < -1, `${partName(p)}: barrel polarity reversed. Its protection diode blocks it, so it stays off.`);
+      warn(p.uid + 'low', !r.dead && r.v > 1 && r.v < 0.85 * vr, `${partName(p)}: only ${r.v.toFixed(1)}V, it keeps rebooting.`);
+    },
+    show: (p, r) => ({ on: !!r.ok, pol: '+' }),
+  },
+  phone: {
+    stamp(p, r, T, E) { const v = r.v || 0; E.push(r.e = { t: 'R', a: T('vbus'), b: T('gnd'), r: v > 4.4 && v < 5.7 && p.state.draw > 0 ? 5 / p.state.draw : v >= 5.7 ? 1e9 : 50 }); },
+    post(p, r, V, cur) {
+      r.v = V('vbus') - V('gnd'); r.i = cur(r.e); r.chg = r.v > 4.4 && r.v < 5.7 && r.i > 0.05; r.w = r.chg ? r.v * r.i : 0;
+      warn(p.uid + 'hv', r.v >= 5.7, `${partName(p)}: ${r.v.toFixed(1)}V on USB! The phone refuses to charge (and a cheap one could be damaged).`, 'e');
+    },
+    show: (p, r) => ({ on: !!r.chg }),
+  },
+  controller: {
+    stamp(p, r, T, E) {
+      E.push({ t: 'R', a: T('pv+'), b: T('bat+'), r: 0.01 }, { t: 'R', a: T('load+'), b: T('bat+'), r: 0.01 });
+      E.push(r.ec = { t: 'R', a: T('pv-'), b: T('bat-'), r: r.chg ? 0.03 : 1e9 });
+      E.push(r.el = { t: 'R', a: T('load-'), b: T('bat-'), r: r.loadOn ? 0.02 : 1e9 });
+      E.push({ t: 'R', a: T('usb-'), b: T('bat-'), r: 0.005 }, { t: 'N', a: T('bat-'), b: T('bat+'), f: Circuit.diode(1e-8, 0.06) });
+      if (r.mode) E.push({ t: 'R', a: T('bat+'), b: T('bat-'), r: 800 });
+      if (r.usbOn) {
+        E.push(r.eu = { t: 'R', a: T('usb+'), b: T('usb-'), r: 0.1 }, { t: 'I', a: T('usb-'), b: T('usb+'), i: 5.1 / 0.1 });
+        if (r.pusb > 0.01) E.push({ t: 'R', a: T('bat+'), b: T('bat-'), r: Math.max((r.vb || 12) ** 2 / (r.pusb / 0.85), 1) });
+      } else r.eu = null;
+    },
+    post(p, r, V, cur) {
+      const vb = V('bat+') - V('bat-'), vpv = V('pv+') - V('pv-');
+      r.vb = vb; r.vpv = vpv;
+      warn(p.uid + 'rev', vb < -1, `💥 ${partName(p)}: battery reversed on BAT terminals! Its protection diode conducts — the fuse should blow now.`, 'e');
+      const powered = vb > 8 || vpv > 8;
+      if (!powered) { if (r.mode) log(`${partName(p)} lost power.`); r.mode = null; r.chg = false; r.loadOn = false; r.usbOn = false; r.lvdTrip = false; return; }
+      if (!r.mode) {
+        r.mode = vb > 8 && vb < 16 ? '12V' : vpv > 18 ? '24V' : '12V';
+        log(r.mode === '24V' ? `⚠ ${partName(p)} powered up from the panel alone (${vpv.toFixed(1)}V) and picked a 24V system! Disconnect everything and connect the battery first.` : `${partName(p)} on: 12V system ✓`, r.mode === '24V' ? 'e' : '');
+      }
+      if (r.mode !== '12V' || vb < 8) { r.chg = false; r.loadOn = false; r.usbOn = false; return; }
+      if (!r.flat && vb < 10.8) { r.flat = true; log(`${partName(p)}: battery is flat (${vb.toFixed(2)}V). Load and USB off until the sun recharges it.`, 'w'); }
+      if (r.flat && vb > 11.8) { r.flat = false; log(`${partName(p)}: battery recovered, load back on.`); }
+      const ichg = -cur(r.ec);
+      if (r.chg) { if (vb >= 14.4 || ichg < 0.02) { r.chg = false; if (vb >= 14.4) r.full = true; } }
+      else if (vpv > vb + 0.5 && (!r.full || vb < 13.4)) { r.chg = true; r.full = false; }
+      if (p.state.lvdOff !== false) r.lvdTrip = false;
+      else if (!r.lvdTrip && vb < +p.state.lvd) { r.lvdTrip = true; log(`${partName(p)}: LVD at ${vb.toFixed(2)}V, load and USB cut.`, 'w'); }
+      if (r.lvdTrip && vb >= 12.6) { r.lvdTrip = false; log(`${partName(p)}: battery back to 12.6V, load reconnected.`); }
+      r.loadOn = !!p.state.load && !r.lvdTrip && !r.flat; r.usbOn = !r.lvdTrip && !r.flat;
+      const vu = V('usb+') - V('usb-');
+      r.pusb = r.eu ? Math.max(0, vu * (5.1 - vu) / 0.1) : 0;
+      r.iload = cur(r.el); r.ichg = ichg;
+    },
+    show: (p, r) => ({ batt: Math.max(10.5, Math.min(14.4, r.vb || 0)), pv: !!r.chg, load: !!r.loadOn }),
+  },
+  inverter: {
+    stamp(p, r, T, E) {
+      const vin = r.vin || 0, P = 5 + p.state.watts / 0.88;
+      E.push(r.e = { t: 'R', a: T('dc+'), b: T('dc-'), r: r.run ? Math.max(vin * vin / P, 0.05) : p.state.on ? 1500 : 1e9 });
+    },
+    post(p, r, V, cur) {
+      r.vin = V('dc+') - V('dc-'); r.i = cur(r.e);
+      if (!p.state.on) { r.run = false; r.trip = false; return; }
+      if (p.state.watts > 300 && !r.trip && r.run) { r.trip = true; r.run = false; log(`${partName(p)}: OVERLOAD (${p.state.watts}W > 300W), shut down. Switch it off and on.`, 'e'); }
+      if (r.trip) return;
+      const was = r.run;
+      r.run = r.vin >= (r.run ? 11.8 : 12.2);
+      if (was && !r.run) log(`${partName(p)}: low-voltage cutoff at ${r.vin.toFixed(2)}V.`, 'w');
+      r.w = r.run ? p.state.watts : 0;
+      warn(p.uid + 'thin', r.run && r.i > 20, `${partName(p)} is pulling ${r.i.toFixed(0)}A. It needs a 30–40A fuse and 6 sq mm wire straight from the battery.`);
+    },
+    show: (p, r) => ({ on: !!r.run, batt: Math.max(10.5, Math.min(13.5, r.vin || 0)) }),
+  },
+  esp32: {
+    stamp(p, r, T, E) {
+      if (r.run) {
+        E.push({ t: 'R', a: T('vin'), b: T('gnd'), r: Math.max((r.vin || 5) ** 2 / 0.6, 5) });
+        E.push({ t: 'R', a: T('3v3'), b: T('gnd'), r: 0.3 }, { t: 'I', a: T('gnd'), b: T('3v3'), i: 3.3 / 0.3 });
+        E.push({ t: 'R', a: T('gpio2'), b: T('gnd'), r: 30 }, { t: 'I', a: T('gnd'), b: T('gpio2'), i: (p.state.led ? 3.3 : 0) / 30 });
+        if (p.state.pullups) E.push({ t: 'R', a: T('3v3'), b: T('sda'), r: 1e4 }, { t: 'R', a: T('3v3'), b: T('scl'), r: 1e4 });
+      } else E.push({ t: 'R', a: T('vin'), b: T('gnd'), r: 1e5 });
+    },
+    post(p, r, V) {
+      r.vin = V('vin') - V('gnd');
+      if (!r.dead && r.vin > 14) { r.dead = true; log(`💥 ${partName(p)}: ${r.vin.toFixed(1)}V on VIN — the regulator let the smoke out.`, 'e'); }
+      r.run = !r.dead && r.vin >= 4.3; r.w = r.run ? 0.6 : 0;
+    },
+    show: (p, r) => ({ on: !!r.run }),
+  },
+  ina226: {
+    stamp(p, r, T, E) {
+      E.push(r.e = { t: 'R', a: T('in+'), b: T('in-'), r: +p.state.shunt });
+      const vcc = r.vcc || 0;
+      if (vcc > 2.7 && vcc < 5.6) E.push({ t: 'R', a: T('vcc'), b: T('gnd'), r: 3300 });
+    },
+    post(p, r, V, cur) {
+      r.i = cur(r.e); r.vcc = V('vcc') - V('gnd'); r.bus = V('in-') - V('gnd');
+      warn(p.uid + 'heat', r.i * r.i * +p.state.shunt > 2, `${partName(p)}: shunt dissipating ${(r.i * r.i * +p.state.shunt).toFixed(1)}W — it's getting hot. Use a smaller shunt.`);
+    },
+    show: (p, r) => ({ amps: Math.max(-8, Math.min(10, r.i || 0)), bus: Math.max(11, Math.min(14.4, r.bus || 12)) }),
+  },
+  mc4: {
+    stamp(p, r, T, E) { E.push(r.e = { t: 'R', a: T('c1'), b: T('c2'), r: p.state.mated ? (p.state.crimp === 'bad' ? 0.4 : 0.004) : 1e9 }); },
+    post(p, r, V, cur) { r.i = cur(r.e); warn(p.uid + 'hot', p.state.crimp === 'bad' && Math.abs(r.i) > 1.5, `${partName(p)}: bad crimp is heating up (${(r.i * r.i * 0.4).toFixed(1)}W in the joint).`); },
+    show: () => ({}),
+  },
+};
+
+function netlist(meter) {
+  const node = {}, E = [];
+  let n = 0;
+  const N = name => node[name] ?? (node[name] = n++);
+  for (const w of B.wires) E.push(w.e = { t: 'R', a: N(w.a), b: N(w.b), r: w.burnt ? 1e9 : 0.012 });
+  for (const p of B.parts) M[p.type].stamp(p, rt(p), term => N(`${p.uid}:${term}`), E);
+  if (meter) E.push(meter.e = { t: 'R', a: N(meter.a), b: N(meter.b), r: 0.03 });
+  return { node, E, n };
+}
+
+function meterInCircuit() {
+  const m = Multimeter.state();
+  if (!m.open || m.socket !== '10A' || m.blown10 || !m.red || !m.black) return null;
+  return { a: m.red, b: m.black };
+}
+
+function step(dtH) {
+  const meter = meterInCircuit(), { node, E, n } = netlist(meter);
+  const V = Circuit.solve(n, E, SOL && SOL.n === n ? SOL.V : null), cur = e => e ? Circuit.current(e, V) : 0;
+  SOL = { node, E, n, V, meter, groups: Circuit.groups(n, E) };
+  for (const w of B.wires) {
+    w.i = cur(w.e);
+    if (w.burnt) continue;
+    w.heat = Math.abs(w.i) > 30 ? (w.heat || 0) + 1 : 0;
+    if (Math.abs(w.i) > 120 || w.heat > 4) { w.burnt = true; dirty = true; log(`🔥 A wire carried ${Math.abs(w.i).toFixed(0)}A and burned through. No fuse protected it!`, 'e'); }
+  }
+  for (const p of B.parts) {
+    const pref = p.uid + ':', Vt = t => { const k = node[pref + t]; return k == null ? 0 : V[k]; };
+    M[p.type].post(p, rt(p), Vt, cur, dtH);
+  }
+  if (meter) SOL.meterI = cur(meter.e);
+}
+
+function sourceLimit(groupOf) {
+  const lim = {};
+  const add = (k, a) => { if (k != null) lim[k] = (lim[k] || 0) + a; };
+  for (const p of B.parts) {
+    const r = rt(p), g = t => groupOf(`${p.uid}:${t}`);
+    if (p.type === 'battery') add(g('b+'), 300);
+    if (p.type === 'panel') add(g('pv+'), r.isc || 0);
+    if (p.type === 'dcdc' && r.vout > 0) add(g('out+'), 3);
+    if (p.type === 'controller' && r.usbOn) add(g('usb+'), 2);
+    if (p.type === 'esp32' && r.run) add(g('3v3'), 0.5);
+  }
+  return lim;
+}
+
+Multimeter.setModel({
+  nets() {
+    if (!SOL) return {};
+    const out = {}, gOf = id => { const k = SOL.node[id]; return k == null ? null : SOL.groups[k]; }, lim = sourceLimit(gOf);
+    for (const [id, k] of Object.entries(SOL.node)) out[id] = { v: SOL.V[k], g: 'g' + SOL.groups[k], imax: lim[SOL.groups[k]] ?? 0 };
+    for (const p of B.parts) if (p.type === 'inverter') {
+      const on = rt(p).run;
+      out[`${p.uid}:L`] = { v: 0, vac: on ? 230 : 0, g: 'ac' + p.uid, imax: on ? 2 : 0 };
+      out[`${p.uid}:N`] = { v: 0, vac: 0, g: 'ac' + p.uid, imax: on ? 2 : 0 };
+    }
+    return out;
+  },
+  current(a, b) {
+    if (!SOL || !SOL.meter) return null;
+    const m = SOL.meter;
+    if (m.a === a && m.b === b) return SOL.meterI;
+    if (m.a === b && m.b === a) return -SOL.meterI;
+    return null;
+  },
+  resistance(a, b) {
+    if (!SOL || SOL.node[a] == null || SOL.node[b] == null) return Infinity;
+    const E = SOL.E.filter(e => e.t === 'R' && e.r < 1e8 && !(SOL.meter && e === SOL.meter.e));
+    for (const p of B.parts) if (p.type === 'fan') { const k = SOL.node[`${p.uid}:fan+`], j = SOL.node[`${p.uid}:fan-`]; if (k != null && j != null) E.push({ t: 'R', a: k, b: j, r: 14.4 }); }
+    const na = SOL.node[a], nb = SOL.node[b];
+    const V = Circuit.solve(SOL.n, [...E, { t: 'I', a: nb, b: na, i: 1 }]), r = V[na] - V[nb];
+    return r > 1e7 ? Infinity : Math.max(0, r);
+  },
+});
+Multimeter.on(e => {
+  if (e.type === 'reading') log(`📟 ${e.text}  (${e.knob}${e.knob === 'V' || e.knob === 'A' ? (e.ac ? ' AC' : ' DC') : ''}, red: ${label(e.red)}, black: ${label(e.black)})`);
+  if (e.type === 'short') log(`💥 The meter's 10A input shorted ${label(e.red)} to ${label(e.black)} (~${Math.round(e.amps)}A). Meter fuse blown.`, 'e');
+  if (e.type === 'fuse-mA') log('💥 Current through the VΩmA socket — mA fuse blown.', 'e');
+  if (e.type === 'ohm-live') log('Ω on a powered circuit reads garbage. Disconnect the source first.', 'w');
+});
+const label = id => { const p = B.parts.find(q => id && id.startsWith(q.uid + ':')); return p ? `${partName(p)} ${id.split(':')[1]}` : id; };
+
+const toWorld = (sx, sy) => { const a = (sx - OX) / (0.866 * S), b = (sy - OY) / (0.5 * S); return [(a + b) / 2, (b - a) / 2]; };
+function svgPt(e) { const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); }
+const snap = v => Math.round(v * 2) / 2;
+
+function drawState(p) { return { ...p.state, ...M[p.type].show(p, rt(p)) }; }
+
+function render() {
+  dirty = false;
+  const parts = B.parts.slice().sort((a, b) => (a.x + a.y) - (b.x + b.y));
+  let o = wobbleDefs(SIM.wob) + `<g filter="url(#wob)">` + I.box(0, 0, -0.8, BW, BD, 0.8, '#e6dcc6');
+  for (let x = 2; x < BW; x += 2) o += I.line([x, 0, 0], [x, BD, 0], 'stroke="#d8ccb2" stroke-width=".6"');
+  for (let y = 2; y < BD; y += 2) o += I.line([0, y, 0], [BW, y, 0], 'stroke="#d8ccb2" stroke-width=".6"');
+  o += '</g><g id="partsL">';
+  for (const p of parts) o += `<g class="bpart" data-uid="${p.uid}" filter="url(#wob)">${def(p).draw(I, drawState(p), { at: [p.x, p.y, 0], prefix: p.uid + ':' })}</g>`;
+  o += '</g><g id="wiresL"></g><g id="termsL"></g><g id="lblL"></g><g id="dragL"></g>';
+  svg.innerHTML = o;
+
+  const inv = svg.getScreenCTM().inverse();
+  TERM = {};
+  let terms = '';
+  for (const el of svg.querySelectorAll('#partsL [data-anchor]')) {
+    const id = el.dataset.anchor, r = el.getBoundingClientRect(), pt = svg.createSVGPoint();
+    pt.x = r.left + r.width / 2; pt.y = r.top + r.height / 2;
+    const q = pt.matrixTransform(inv), lbl = el.dataset.label || id, t = id.split(':')[1] || '';
+    TERM[id] = [q.x, q.y];
+    el.removeAttribute('data-anchor'); el.setAttribute('opacity', '0');
+    const pos = /\+|centre|vbus|^L$|vin|3v3|vcc/.test(t), neg = /-|gnd|sleeve|^N$/.test(t);
+    const p = B.parts.find(q => id.startsWith(q.uid + ':'));
+    terms += `<circle class="term" data-anchor="${id}" data-node="${id}" data-label="${p ? partName(p) + ' · ' : ''}${lbl}" cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="5.5" fill="#f2efe7" stroke="${pos ? '#d6452f' : neg ? '#1d1d1b' : '#3a6ed6'}" stroke-width="2"/>`;
+  }
+  $('termsL').innerHTML = terms;
+  drawWires();
+
+  let lbl = '';
+  for (const p of parts) {
+    const g = svg.querySelector(`.bpart[data-uid="${p.uid}"]`), bb = g.getBBox();
+    if (sel && sel.part === p.uid) lbl += `<rect class="sel-box" x="${bb.x - 6}" y="${bb.y - 6}" width="${bb.width + 12}" height="${bb.height + 12}" rx="10"/>`;
+    lbl += pill(bb.x + bb.width / 2, bb.y - 14, `${ICON[p.type] || ''} ${partName(p).toUpperCase()}`, p.uid);
+  }
+  $('lblL').innerHTML = lbl;
+  $('lblL').querySelectorAll('.lbl').forEach(l => l.onclick = () => select({ part: l.dataset.part }));
+}
+
+function wirePath(a, b) {
+  const d = Math.hypot(b[0] - a[0], b[1] - a[1]), sag = 18 + d * 0.18;
+  return `M${a[0].toFixed(1)},${a[1].toFixed(1)} C${a[0].toFixed(1)},${(a[1] + sag).toFixed(1)} ${b[0].toFixed(1)},${(b[1] + sag).toFixed(1)} ${b[0].toFixed(1)},${b[1].toFixed(1)}`;
+}
+function drawWires() {
+  let o = '';
+  for (const w of B.wires) {
+    const a = TERM[w.a], b = TERM[w.b];
+    if (!a || !b) continue;
+    const d = wirePath(a, b), s = sel && sel.wire === w.id;
+    o += `<g class="bwire${w.burnt ? ' off' : ''}" data-wire="${w.id}">`;
+    if (s) o += `<path d="${d}" fill="none" stroke="#f3c33b" stroke-width="10" stroke-linecap="round"/>`;
+    o += `<path d="${d}" fill="none" stroke="#1d1d1b" stroke-width="5.5" stroke-linecap="round"/><path d="${d}" fill="none" stroke="${w.burnt ? '#7a4b22' : w.c}" stroke-width="3.6" stroke-linecap="round" ${w.burnt ? 'stroke-dasharray="3 6"' : ''}/>`;
+    o += `<path class="wflow" data-w="${w.id}" d="${d}" fill="none" stroke="#fff" stroke-width="1.4" stroke-dasharray="2 10" stroke-linecap="round" opacity="0"/>`;
+    o += `<path d="${d}" fill="none" stroke="transparent" stroke-width="12"/></g>`;
+  }
+  $('wiresL').innerHTML = o;
+}
+
+let flowT = 0;
+function animateFlow(ts) {
+  requestAnimationFrame(animateFlow);
+  const dt = Math.min(50, ts - (flowT || ts)); flowT = ts;
+  for (const el of svg.querySelectorAll('.wflow')) {
+    const w = B.wires.find(x => x.id === el.dataset.w);
+    if (!w) continue;
+    const i = w.burnt ? 0 : w.i || 0;
+    if (Math.abs(i) < 0.02) { el.setAttribute('opacity', '0'); continue; }
+    w.off = ((w.off || 0) - Math.sign(i) * dt * (0.02 + Math.min(Math.abs(i), 10) * 0.012)) % 24;
+    el.setAttribute('opacity', '0.95'); el.setAttribute('stroke-dashoffset', w.off.toFixed(1));
+  }
+}
+
+function addPart(type, x, y) {
+  const d = BenchParts.get(type), p = { uid: 'u' + B.next++, type, x: Math.max(0, Math.min(BW - 4, snap(x))), y: Math.max(0, Math.min(BD - 4, snap(y))), state: BenchParts.initState(d) };
+  if (type === 'controller') p.state.load = true;
+  if (type === 'fuse') p.state.blown = false;
+  B.parts.push(p); save(); select({ part: p.uid }); log(`Added ${partName(p)}.`); dirty = true;
+  return p;
+}
+function addWire(a, b, color) {
+  if (a === b || B.wires.some(w => (w.a === a && w.b === b) || (w.a === b && w.b === a))) return;
+  const neg = id => /-|gnd|sleeve|^N$/.test(id.split(':')[1]);
+  const c = color && color !== 'auto' ? color : neg(a) || neg(b) ? '#262624' : '#d6452f';
+  const w = { id: 'w' + B.next++, a, b, c };
+  B.wires.push(w); save(); log(`Wire: ${label(a)} → ${label(b)}`); dirty = true;
+  return w;
+}
+function removeSelected() {
+  if (!sel) return;
+  if (sel.part) { const p = B.parts.find(q => q.uid === sel.part); B.parts = B.parts.filter(q => q !== p); B.wires = B.wires.filter(w => !w.a.startsWith(p.uid + ':') && !w.b.startsWith(p.uid + ':')); delete RT[p.uid]; log(`Removed ${partName(p)} and its wires.`); }
+  if (sel.wire) { B.wires = B.wires.filter(w => w.id !== sel.wire); log('Wire removed.'); }
+  sel = null; save(); dirty = true; inspect();
+}
+
+function select(s) { sel = s; dirty = true; inspect(); }
+function inspect() {
+  const el = $('insp');
+  if (!sel) { el.innerHTML = '<div class="k">Nothing selected</div>Click a part or a wire.'; return; }
+  if (sel.wire) {
+    const w = B.wires.find(x => x.id === sel.wire);
+    if (!w) return select(null);
+    el.innerHTML = `<div class="k">Wire</div><table><tr><td>From</td><td>${label(w.a)}</td></tr><tr><td>To</td><td>${label(w.b)}</td></tr><tr><td>Current</td><td id="iCur">${Math.abs(w.i || 0).toFixed(2)}A</td></tr><tr><td>State</td><td>${w.burnt ? '🔥 burned' : 'ok (2.5 sq mm, ~30A max)'}</td></tr></table><div class="row"><button class="btn" id="iDel">Delete wire</button></div>`;
+    $('iDel').onclick = removeSelected;
+    return;
+  }
+  const p = B.parts.find(q => q.uid === sel.part);
+  if (!p) return select(null);
+  const d = def(p), keys = USER[p.type] || [];
+  let h = `<div class="k">${ICON[p.type] || ''} ${partName(p)} · ${d.name}</div><table id="iLive"></table>`;
+  for (const k of keys) {
+    const c = d.controls.find(x => x.key === k);
+    if (!c) continue;
+    if (c.type === 'range') h += `<label>${c.label} <b id="iv_${k}">${p.state[k]}${c.unit || ''}</b><input type="range" data-k="${k}" min="${c.min}" max="${c.max}" step="${c.step}" value="${p.state[k]}"></label>`;
+    if (c.type === 'toggle') h += `<label><input type="checkbox" data-k="${k}" ${p.state[k] ? 'checked' : ''}> ${c.label}</label>`;
+    if (c.type === 'select') h += `<label>${c.label} <select data-k="${k}">${c.options.map(([v, t]) => `<option value="${v}" ${String(p.state[k]) === String(v) ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`;
+  }
+  h += `<table style="margin-top:8px">${d.specs.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('')}</table><div class="note" style="margin-top:6px">${d.notes || ''}</div><div class="row"><button class="btn" id="iDel">Delete part</button></div>`;
+  el.innerHTML = h;
+  el.querySelectorAll('[data-k]').forEach(inp => inp.oninput = inp.onchange = () => {
+    const k = inp.dataset.k, c = d.controls.find(x => x.key === k);
+    p.state[k] = c.type === 'toggle' ? inp.checked : c.type === 'range' ? +inp.value : inp.value;
+    if (c.type === 'range') $('iv_' + k).textContent = p.state[k] + (c.unit || '');
+    if (p.type === 'fuse' && k === 'blown' && !p.state.blown) log(`${partName(p)} replaced.`);
+    if (p.type === 'inverter' && k === 'on') rt(p).trip = false;
+    if (p.type === 'router' && k === 'volts') rt(p).dead = false;
+    save(); dirty = true;
+  });
+  $('iDel').onclick = removeSelected;
+  live();
+}
+function live() {
+  if (!sel || !sel.part || !$('iLive')) { if (sel && sel.wire && $('iCur')) { const w = B.wires.find(x => x.id === sel.wire); if (w) $('iCur').textContent = `${Math.abs(w.i || 0).toFixed(2)}A`; } return; }
+  const p = B.parts.find(q => q.uid === sel.part), r = rt(p);
+  if (!p || !SOL) return;
+  const rows = [];
+  const V = t => { const k = SOL.node[`${p.uid}:${t}`]; return k == null ? null : SOL.V[k]; };
+  const pairs = { panel: [['pv+', 'pv-']], battery: [['b+', 'b-']], fuse: [['f1', 'f2']], fan: [['fan+', 'fan-']], dcdc: [['in+', 'in-'], ['out+', 'out-']], router: [['centre', 'sleeve']], phone: [['vbus', 'gnd']], controller: [['pv+', 'pv-'], ['bat+', 'bat-'], ['load+', 'load-'], ['usb+', 'usb-']], inverter: [['dc+', 'dc-']], esp32: [['vin', 'gnd'], ['3v3', 'gnd']], ina226: [['in+', 'in-'], ['vcc', 'gnd']], mc4: [['c1', 'c2']] }[p.type] || [];
+  for (const [a, b] of pairs) { const va = V(a), vb = V(b); rows.push([`${a} → ${b}`, va == null || vb == null ? '—' : `${(va - vb).toFixed(p.type === 'ina226' && a === 'in+' ? 4 : 2)}V`]); }
+  const extra = {
+    panel: () => [['Current', `${(r.i || 0).toFixed(2)}A (Isc ${(r.isc || 0).toFixed(2)}A)`], ['Power', `${(r.w || 0).toFixed(1)}W`]],
+    battery: () => [['Current out', `${(r.i || 0).toFixed(2)}A ${(r.i || 0) < -0.02 ? '(charging)' : ''}`], ['Charge', `${p.state.soc.toFixed(1)}%`]],
+    fuse: () => [['Current', `${(r.i || 0).toFixed(2)}A`], ['State', p.state.blown ? 'BLOWN — untick "Blown" to replace' : 'ok']],
+    controller: () => [['Mode', r.mode || 'off'], ['Charging', r.chg ? `yes, ${(r.ichg || 0).toFixed(2)}A` : 'no'], ['Load output', r.loadOn ? `on, ${(r.iload || 0).toFixed(2)}A` : r.lvdTrip ? 'LVD cut' : 'off']],
+    router: () => [['State', r.dead ? 'DEAD' : r.ok ? 'running' : 'off']],
+    phone: () => [['State', r.chg ? `charging ${(r.i || 0).toFixed(2)}A` : 'not charging']],
+    inverter: () => [['State', r.trip ? 'OVERLOAD trip' : r.run ? `running, ${p.state.watts}W AC` : 'off'], ['DC current', `${(r.i || 0).toFixed(1)}A`]],
+    ina226: () => [['Shunt current', `${(r.i || 0).toFixed(2)}A`], ['Shunt mV', `${((r.i || 0) * +p.state.shunt * 1000).toFixed(2)} mV`]],
+    fan: () => [['Current', `${(r.i || 0).toFixed(2)}A`]],
+    esp32: () => [['State', r.dead ? 'DEAD' : r.run ? 'running' : 'off']],
+    mc4: () => [['Current', `${Math.abs(r.i || 0).toFixed(2)}A`]],
+    dcdc: () => [['Output', `${(r.vout || 0).toFixed(2)}V set, ${(r.pout || 0).toFixed(1)}W`]],
+  }[p.type];
+  if (extra) rows.push(...extra());
+  $('iLive').innerHTML = rows.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
+}
+
+function stats() {
+  const bat = B.parts.find(p => p.type === 'battery'), r = bat && rt(bat);
+  const sIn = B.parts.filter(p => p.type === 'panel').reduce((s, p) => s + (rt(p).w || 0), 0);
+  const sOut = B.parts.reduce((s, p) => s + (['fan', 'router', 'phone', 'inverter', 'esp32'].includes(p.type) ? rt(p).w || 0 : 0), 0);
+  $('sTime').textContent = hhmm(SIM.t); $('oTime').textContent = hhmm(SIM.t); $('cTime').value = Math.floor(SIM.t);
+  $('sSun').textContent = Math.round(sunNow() * 100) + '%';
+  $('sBatt').textContent = bat ? `${(r.v || r.ocv || 0).toFixed(2)}V ${Math.round(bat.state.soc)}%` : '—';
+  $('sIn').textContent = sIn.toFixed(1) + 'W'; $('sOut').textContent = sOut.toFixed(1) + 'W';
+  const bad = B.parts.some(p => p.state.blown || rt(p).dead || rt(p).mode === '24V' || rt(p).trip) || B.wires.some(w => w.burnt);
+  $('sStatus').textContent = !B.parts.length ? 'EMPTY' : bad ? 'FAULT' : 'OK'; $('sStatus').className = bad ? 'bad' : '';
+  $('hint').textContent = !B.parts.length ? 'Drag a part from the left onto the board, or load the example.'
+    : !B.wires.length ? 'Now press on a terminal dot and drag to another terminal to make a wire.'
+      : bad ? 'Something failed — check the log. Select the part to reset it (fuse: untick Blown).'
+        : 'It is running. Press M for the multimeter and probe any dot. Select a part or wire and press Delete to remove it.';
+}
+
+function example() {
+  B = { parts: [], wires: [], next: 1 }; RT = {}; warned.clear(); SOL = null;
+  const add = (t, x, y) => addPart(t, x, y).uid;
+  const pv = add('panel', 2, 1), cc = add('controller', 17, 4), bat = add('battery', 4, 19), fu = add('fuse', 11, 13), fan = add('fan', 33, 1), dc = add('dcdc', 24, 15), ro = add('router', 27, 24), ph = add('phone', 30, 9);
+  const W = (a, b) => addWire(a, b, 'auto');
+  W(`${bat}:b+`, `${fu}:f1`); W(`${fu}:f2`, `${cc}:bat+`); W(`${bat}:b-`, `${cc}:bat-`);
+  W(`${pv}:pv+`, `${cc}:pv+`); W(`${pv}:pv-`, `${cc}:pv-`);
+  W(`${cc}:load+`, `${fan}:fan+`); W(`${cc}:load-`, `${fan}:fan-`);
+  W(`${cc}:load+`, `${dc}:in+`); W(`${cc}:load-`, `${dc}:in-`);
+  W(`${dc}:out+`, `${ro}:centre`); W(`${dc}:out-`, `${ro}:sleeve`);
+  W(`${cc}:usb+`, `${ph}:vbus`); W(`${cc}:usb-`, `${ph}:gnd`);
+  sel = null; save(); dirty = true; inspect();
+  log('Example loaded: the full setup from Fig. 01, wired in the safe order.');
+}
+
+function bindUI() {
+  $('palette').innerHTML = BenchParts.list().map(d => `<div class="pal" data-type="${d.id}">${ICON[d.id] || ''} ${d.name}<small>drag onto the board</small></div>`).join('');
+  $('palette').querySelectorAll('.pal').forEach(el => el.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const g = document.createElement('div'); g.className = 'ghost pal'; g.innerHTML = el.innerHTML; document.body.appendChild(g);
+    const move = ev => { g.style.left = ev.clientX + 'px'; g.style.top = ev.clientY + 'px'; };
+    move(e);
+    const up = ev => {
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up); g.remove();
+      const r = svg.getBoundingClientRect(), inside = ev.clientX > r.left && ev.clientX < r.right && ev.clientY > r.top && ev.clientY < r.bottom;
+      const moved = Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) > 6;
+      const o = OFFSET[el.dataset.type] || [3, 2];
+      if (inside && moved) { const q = svgPt(ev), [x, y] = toWorld(q.x, q.y); addPart(el.dataset.type, x - o[0], y - o[1]); }
+      else if (!moved) { const n = B.parts.length; addPart(el.dataset.type, 2 + (n * 9) % 36, 2 + Math.floor(n / 4) * 8 % 26); }
+    };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+  }));
+
+  svg.addEventListener('pointerdown', e => {
+    const term = e.target.closest('.term'), part = e.target.closest('.bpart'), wire = e.target.closest('.bwire'), lbl = e.target.closest('.lbl');
+    const q = svgPt(e);
+    if (term) { wireDrag = { from: term.dataset.anchor, x: q.x, y: q.y }; svg.setPointerCapture(e.pointerId); return; }
+    if (lbl) return;
+    if (wire) { select({ wire: wire.dataset.wire }); return; }
+    if (part) {
+      const p = B.parts.find(x => x.uid === part.dataset.uid), [wx, wy] = toWorld(q.x, q.y);
+      drag = { p, dx: p.x - wx, dy: p.y - wy, moved: false }; select({ part: p.uid }); svg.setPointerCapture(e.pointerId); return;
+    }
+    select(null);
+  });
+  svg.addEventListener('pointermove', e => {
+    const q = svgPt(e);
+    if (wireDrag) {
+      wireDrag.x = q.x; wireDrag.y = q.y;
+      const a = TERM[wireDrag.from], hit = nearestTerm(q.x, q.y, wireDrag.from);
+      const b = hit ? TERM[hit] : [q.x, q.y];
+      $('dragL').innerHTML = `<path d="${wirePath(a, b)}" fill="none" stroke="#1d1d1b" stroke-width="3" stroke-dasharray="6 5"/>${hit ? `<circle cx="${b[0]}" cy="${b[1]}" r="10" fill="#f3c33b55" stroke="#1d1d1b" stroke-width="2"/>` : ''}`;
+    }
+    if (drag) {
+      const [wx, wy] = toWorld(q.x, q.y), nx = Math.max(0, Math.min(BW - 3, snap(wx + drag.dx))), ny = Math.max(0, Math.min(BD - 3, snap(wy + drag.dy)));
+      if (nx !== drag.p.x || ny !== drag.p.y) { drag.p.x = nx; drag.p.y = ny; drag.moved = true; dirty = true; }
+    }
+  });
+  const end = e => {
+    if (wireDrag) {
+      const q = svgPt(e), hit = nearestTerm(q.x, q.y, wireDrag.from);
+      if (hit) addWire(wireDrag.from, hit, $('cWire').value);
+      wireDrag = null; $('dragL').innerHTML = '';
+    }
+    if (drag) { if (drag.moved) save(); drag = null; }
+  };
+  svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end);
+  addEventListener('keydown', e => {
+    if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSelected(); }
+    if (e.key === 'Escape') { wireDrag = null; $('dragL').innerHTML = ''; select(null); }
+  });
+
+  $('bExample').onclick = example;
+  $('bClear').onclick = () => { B = { parts: [], wires: [], next: 1 }; RT = {}; SOL = null; warned.clear(); sel = null; save(); dirty = true; inspect(); log('Board cleared.'); };
+  $('bDelete').onclick = removeSelected;
+  $('bMeter').onclick = () => Multimeter.toggle();
+  $('cTime').oninput = e => { SIM.t = +e.target.value; };
+  $('cWx').onchange = e => { SIM.wx = +e.target.value; };
+  $('cSpeed').onchange = e => { SIM.speed = +e.target.value; };
+  $('cPlay').onclick = () => { SIM.playing = !SIM.playing; $('cPlay').textContent = SIM.playing ? '❚❚' : '▶'; };
+  $('cWob').oninput = e => { SIM.wob = +e.target.value; $('oWob').textContent = SIM.wob; dirty = true; };
+  $('oWob').textContent = SIM.wob;
+}
+function nearestTerm(x, y, except) {
+  let best = null, bd = 16;
+  for (const [id, [tx, ty]] of Object.entries(TERM)) { if (id === except) continue; const d = Math.hypot(tx - x, ty - y); if (d < bd) { bd = d; best = id; } }
+  return best;
+}
+
+let lastSig = '';
+function tick() {
+  const dtMin = SIM.playing ? SIM.speed : 0;
+  SIM.t = (SIM.t + dtMin) % 1440;
+  step(dtMin / 60);
+  const sig = JSON.stringify(B.parts.map(p => [p.uid, p.x, p.y, drawState(p)], (k, v) => typeof v === 'number' ? Math.round(v * 10) / 10 : v)) + B.wires.map(w => w.id + w.burnt).join() + JSON.stringify(sel) + SIM.wob;
+  if (dirty || sig !== lastSig) { lastSig = sig; render(); }
+  stats(); live();
+}
+
+bindUI();
+if (!B.parts.length) log('Empty board. Drag parts from the left, or press "Load example: full setup".');
+else log(`Restored your board: ${B.parts.length} parts, ${B.wires.length} wires.`);
+render(); inspect();
+setInterval(tick, 100);
+requestAnimationFrame(animateFlow);
+</script>
+</body>
+</html>

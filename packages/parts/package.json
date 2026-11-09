@@ -1,0 +1,27 @@
+{
+  "name": "@eb/parts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@eb/engine": "workspace:*",
+    "avr8js": "^0.21.1",
+    "rp2040js": "^1.4.1"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "react": "19.3.0",
+    "typescript": "^5",
+    "vitest": "^3"
+  }
+}

@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solar Bench — Fig. 09 Second panel</title>
+<link rel="stylesheet" href="bench.css">
+<style>
+.stats{grid-template-columns:repeat(5,auto)}
+.stat b{font-size:16px;white-space:nowrap}
+.ctl output{float:right;font-size:11px;font-weight:700}
+.controls{row-gap:14px}
+.smoke{animation:smoke 1.6s ease-out infinite}
+@keyframes smoke{from{opacity:.8;transform:translateY(0)}to{opacity:0;transform:translateY(-30px)}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside id="side" data-cur="09"></aside>
+<script src="bench.js"></script>
+<script src="kit.js"></script>
+<script src="components/multimeter.js"></script>
+
+<main>
+  <div class="head">
+    <div>
+      <h2>Fig. 09 — Second panel</h2>
+      <div class="kicker">upgrade ~Feb 2027 · 2× Loom 55W · 10A PWM · parallel vs series</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Array Voc</span><b id="sVoc">—</b></div>
+      <div class="stat"><span>Array Isc</span><b id="sIsc">—</b></div>
+      <div class="stat"><span>PWM charge</span><b id="sChg">—</b></div>
+      <div class="stat"><span>Daily charge</span><b id="sAh">—</b></div>
+      <div class="stat"><span>Status</span><b id="sStatus">—</b></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="actions">
+      <button class="btn" id="bTwo">Add second panel</button>
+      <div class="row">
+        <button class="btn" id="bPar">Parallel (Y)</button>
+        <button class="btn" id="bSer">Series</button>
+      </div>
+      <button class="btn" id="bMix">Panel 2: same model</button>
+      <button class="btn" id="bPlug">Unplug array (MC4)</button>
+      <div class="dd">
+        <button class="btn" data-menu="mMeter">Multimeter ▾</button>
+        <div class="menu" id="mMeter">
+          <button data-act="mVoc">Measure array voltage (at the MC4 output)</button>
+          <button data-act="mIsc">Measure array Isc (10A socket)</button>
+          <button data-act="mCold">Estimate cold-morning Voc</button>
+        </div>
+      </div>
+      <div class="dd">
+        <button class="btn warn" data-menu="mOops">Make a mistake ▾</button>
+        <div class="menu" id="mOops">
+          <button data-act="oSeries">Wire in series (controller limit 25V)</button>
+          <button data-act="oMix">Different-model panel in series</button>
+          <button data-act="oRev">One panel reversed in the Y-branch</button>
+          <button data-act="oOldNew">Old 26Ah + new 42Ah in parallel</button>
+          <button data-act="oFix">Fix everything</button>
+        </div>
+      </div>
+      <div class="hint" id="hint"></div>
+    </div>
+    <svg id="fig" viewBox="0 20 900 600" aria-label="Two solar panels with controller and battery"></svg>
+  </div>
+
+  <div class="controls">
+    <div class="ctl"><span>Sunlight <output id="oG"></output></span><input type="range" id="cG" min="0" max="1100" step="10" value="1000"></div>
+    <div class="ctl"><span>Air temperature <output id="oAmb"></output></span><input type="range" id="cAmb" min="2" max="46" value="28"></div>
+    <div class="ctl"><span>Controller max PV · weather</span>
+      <select id="cLim"><option value="50">Max PV 50V</option><option value="25">Max PV 25V</option></select>
+      <select id="cWx"><option value="1">Clear sun</option><option value="0.5">Cloudy / winter</option></select>
+    </div>
+    <div class="ctl"><span>Battery</span>
+      <select id="cBatt"><option value="26">26Ah (current one)</option><option value="42">New 42Ah</option><option value="both">Old 26Ah + new 42Ah in parallel</option></select>
+    </div>
+    <div class="ctl"><span>Hand-drawn wobble <output id="oWob"></output></span><input type="range" id="cWob" min="0" max="6" step="0.5" value="2"></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h3>In this figure</h3>
+      <div class="note">Step 1 of the plan: a second 55W panel of the <b>same model</b>, wired in <b>parallel</b> with an MC4 Y-branch. In parallel the currents add (~5.2A) and the voltage stays the same. In series the voltages add (~49V Voc), which is at or above the controller's limit. Over time the battery becomes the bottleneck too (step 3). Open the 🔧 multimeter and probe any dot.</div>
+      <h3>Selected part</h3>
+      <div class="card" id="partCard"><div class="k">Nothing selected</div>Click any part or label in the figure.</div>
+      <h3>Parts in this upgrade</h3>
+      <div id="chips"></div>
+      <h3>Daily budget</h3>
+      <div class="card" id="dayCard"></div>
+    </div>
+    <div>
+      <h3>Serial monitor (event log)</h3>
+      <div class="log" id="log"></div>
+      <h3>Check yourself</h3>
+      <div id="quiz"></div>
+      <h3>Practice task</h3>
+      <div class="note" style="margin-bottom:6px">Try these in the figure. Each step ticks itself.</div>
+      <ul class="check" id="check"></ul>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+const K = iso(16, 330, 200), { P, pts, poly, box, line, path, faceY } = K;
+const VBAT = 13.2, SUN_HOURS = 4.2;
+const LOOM = { name: 'Loom 55W', voc: 24.5, isc: 2.83, vmp: 21, imp: 2.62, cell: '#2c4a96' };
+const OTHER = { name: 'Different model ~40W (generic)', voc: 22, isc: 2.45, vmp: 18, imp: 2.22, cell: '#4a6fb8' };
+const BATTS = { 26: { usable: 13, label: 'BATTERY 26Ah' }, 42: { usable: 21, label: 'BATTERY 42Ah (new)' }, both: { usable: 0, label: 'NEW 42Ah + OLD 26Ah' } };
+
+const st = { two: false, mode: 'par', mix: false, rev: false, plug: true, lim: 50, batt: '26', G: 1000, amb: 28, wx: 1, wob: 2, sel: null };
+const log = makeLog();
+
+function panelIV(spec, G, Tc) {
+  const g = Math.max(G, 0) / 1000;
+  if (g < 0.002) return null;
+  const voc = spec.voc * (1 - 0.0028 * (Tc - 25)) + 0.5 * Math.log(g), isc = spec.isc * g, a = spec.voc * 0.06;
+  return { voc, isc, I: V => Math.max(0, isc * (1 - Math.exp((V - voc) / a))), V: I => I < isc ? voc + a * Math.log(1 - I / isc) : -0.5 };
+}
+
+function arrayIV(G = st.G, Tc = st.amb + G / 800 * 25, cfg = st) {
+  const A = panelIV(LOOM, G, Tc), B = cfg.two ? panelIV(cfg.mix ? OTHER : LOOM, G, Tc) : null;
+  const zero = { voc: 0, isc: 0, mpp: [0, 0], pwm: 0, voc1: 0, voc2: 0 };
+  if (!A) return zero;
+  const out = [];
+  if (!cfg.two || cfg.mode === 'par') {
+    if (cfg.two && cfg.rev) return { voc: 0.7, isc: 0, mpp: [0, 0], pwm: 0, voc1: A.voc, voc2: B.voc };
+    const vmax = B ? Math.max(A.voc, B.voc) : A.voc;
+    for (let i = 0; i <= 200; i++) { const V = vmax * i / 200; out.push([V, A.I(V) + (B ? B.I(V) : 0)]); }
+  } else {
+    const imax = Math.max(A.isc, B.isc);
+    for (let i = 0; i <= 200; i++) { const I = imax * i / 200 * 0.999, V = A.V(I) + B.V(I); if (V < 0) break; out.push([V, I]); }
+  }
+  const voc = Math.max(...out.map(p => p[0])), isc = Math.max(...out.map(p => p[1]));
+  const mpp = out.reduce((b, p) => p[0] * p[1] > b[0] * b[1] ? p : b, [0, 0]);
+  const sorted = [...out].sort((p, q) => p[0] - q[0]);
+  let pwm = 0;
+  for (let i = 1; i < sorted.length; i++) if (sorted[i - 1][0] <= VBAT && sorted[i][0] >= VBAT) { pwm = sorted[i][1]; break; }
+  if (sorted[0][0] > VBAT) pwm = sorted[0][1];
+  return { voc, isc, mpp, pwm, voc1: A.voc, voc2: B ? B.voc : 0 };
+}
+
+const coldVoc = () => arrayIV(300, st.amb + 9).voc;
+function dailyAh(cfg = st) { const a = arrayIV(1000, st.amb + 25, cfg); return a.voc > st.lim ? 0 : a.pwm * SUN_HOURS * st.wx; }
+
+function calc() {
+  const a = arrayIV();
+  const over = st.plug && a.voc > st.lim, burnt = over && a.voc > st.lim + 1;
+  const charging = st.plug && !burnt && a.pwm > 0.05;
+  let status = 'STANDBY', bad = false;
+  if (burnt) { status = 'OVER VOLT!'; bad = true; }
+  else if (over) { status = 'AT LIMIT'; bad = true; }
+  else if (st.two && st.rev && st.mode === 'par') { status = 'NO OUTPUT'; bad = true; }
+  else if (!st.plug) status = 'UNPLUGGED';
+  else if (charging) status = 'CHARGING';
+  if (st.batt === 'both' && !bad) { status = 'BATT MISMATCH'; bad = true; }
+  return { a, over, burnt, charging, status, bad, day: st.plug ? dailyAh() : 0 };
+}
+
+function nodeMap() {
+  if (!st.two) return { p1p: 'pv+', p1n: 'pv-' };
+  if (st.mode === 'ser') return { p1p: 'pv+', p1n: 'mid', p2p: 'mid', p2n: 'pv-' };
+  return { p1p: 'pv+', p1n: 'pv-', p2p: st.rev ? 'pv-' : 'pv+', p2n: st.rev ? 'pv+' : 'pv-' };
+}
+
+Multimeter.setModel({
+  nets() {
+    const c = calc(), vb = c.charging ? VBAT : 12.7, isc = c.a.isc;
+    const pvV = c.charging ? vb : c.a.voc;
+    const g = st.plug ? 'sys' : 'pv';
+    const n = {
+      'bat+': { v: vb, g: 'sys', imax: 300 }, neg: { v: 0, g: 'sys', imax: 300 },
+      'cpv+': { v: st.plug && !c.burnt ? pvV : 0, g: 'sys', imax: st.plug ? isc : 0 },
+      'pv+': { v: pvV, g, imax: isc }, 'pv-': { v: 0, g, imax: st.plug ? 300 : isc },
+    };
+    if (st.two && st.mode === 'ser') n.mid = { v: pvV * c.a.voc2 / Math.max(0.1, c.a.voc1 + c.a.voc2), g, imax: isc };
+    return n;
+  },
+  resistance: (a, b) => {
+    const same = [['pv-', 'neg'], ['cpv+', 'pv+']];
+    return st.plug && same.some(([x, y]) => (a === x && b === y) || (a === y && b === x)) ? 0.02 : Infinity;
+  },
+});
+
+function panelDraw(x0, spec, part) {
+  const A = [x0, 1, 9], B = [x0 + 9, 1, 9], C = [x0 + 9, 6, 3], D = [x0, 6, 3];
+  let o = `<g class="part" data-part="${part}">`;
+  [[x0 + 1, 1, 8.6], [x0 + 8, 1, 8.6]].forEach(([x, y, h]) => o += line([x, y, 0], [x, y, h], 'class="ink" stroke-width="2.5"'));
+  o += poly([P(...B), P(...C), P(x0 + 9, 6, 2.5), P(x0 + 9, 1, 8.5)], '#a9afb4');
+  o += poly([P(...D), P(...C), P(x0 + 9, 6, 2.5), P(x0, 6, 2.5)], '#bfc4c8');
+  o += poly([P(...A), P(...B), P(...C), P(...D)], '#c9ced2');
+  const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t), pt = (u, w) => lerp(lerp(A, B, u), lerp(D, C, u), w);
+  o += poly([P(...pt(.04, .07)), P(...pt(.96, .07)), P(...pt(.96, .93)), P(...pt(.04, .93))], spec.cell);
+  const cols = spec === LOOM ? 6 : 5;
+  for (let i = 1; i < cols; i++) { const u = .04 + .92 * i / cols; o += `<line x1="${P(...pt(u, .07))[0]}" y1="${P(...pt(u, .07))[1]}" x2="${P(...pt(u, .93))[0]}" y2="${P(...pt(u, .93))[1]}" stroke="#9fbcf0" stroke-width=".8"/>`; }
+  for (let j = 1; j < 3; j++) { const w = .07 + .86 * j / 3; o += `<line x1="${P(...pt(.04, w))[0]}" y1="${P(...pt(.04, w))[1]}" x2="${P(...pt(.96, w))[0]}" y2="${P(...pt(.96, w))[1]}" stroke="#9fbcf0" stroke-width=".8"/>`; }
+  o += `<polygon points="${pts([P(...pt(.1, .12)), P(...pt(.3, .12)), P(...pt(.12, .5))])}" fill="#fff" opacity="${st.G / 3000}"/>`;
+  [[x0 + 1, 6, 2.6], [x0 + 8, 6, 2.6]].forEach(([x, y, h]) => o += line([x, y, 0], [x, y, h], 'class="ink" stroke-width="2.5"'));
+  return o + '</g>';
+}
+const ghostPanel = x0 => `<polygon class="off" points="${pts([P(x0, 1, 9), P(x0 + 9, 1, 9), P(x0 + 9, 6, 3), P(x0, 6, 3)])}" fill="none" stroke="#1d1d1b" stroke-dasharray="4 5" opacity=".35"/>`;
+
+const RED = '#d6452f', BLK = '#262624';
+const wire = (p, c, live, rev = false, w = 3.2, off = false) => `<path class="wire${off ? ' off' : ''}" stroke="${c}" stroke-width="${w}" d="${path(p)}"/>${off ? '' : `<path class="flow${live ? ' live' : ''}${rev ? ' rev' : ''}" d="${path(p)}"/>`}`;
+const anchor = (id, node, label, at) => { const [x, y] = P(...at); return `<circle data-anchor="${id}" data-node="${node}" data-label="${label}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="#f2efe7" stroke="#1d1d1b" stroke-width="1.3"/>`; };
+
+function build(c) {
+  const live = c.charging;
+  let o = wobbleDefs(st.wob) + `<g filter="url(#wob)">` + box(0, 0, -0.8, 37, 18, 0.8, '#e6dcc6');
+  const sunK = st.G / 1100;
+  o += `<circle cx="840" cy="70" r="${18 + 8 * sunK}" fill="#f3c33b" class="ink" opacity="${0.25 + 0.75 * sunK}"/>`;
+  o += panelDraw(1, LOOM, 'p1');
+  if (st.two) o += panelDraw(11, st.mix ? OTHER : LOOM, 'p2');
+  else o += ghostPanel(11);
+
+  if (!st.two) {
+    o += wire([[5, 6, 2.6], [5, 8, 0], [20, 8, 0]], RED, live);
+    o += wire([[6, 6, 2.6], [6, 9, 0], [21, 9, 0]], BLK, live, true);
+    o += wire([[15, 6, 2.6], [15, 7.4, 0], [19.4, 7.4, 0], [20, 8, 0]], RED, false, false, 3.2, true);
+    o += wire([[16, 6, 2.6], [16, 9.6, 0], [20.4, 9.6, 0], [21, 9, 0]], BLK, false, false, 3.2, true);
+  } else if (st.mode === 'par') {
+    const [rb, bb] = st.rev ? [BLK, RED] : [RED, BLK];
+    o += wire([[5, 6, 2.6], [5, 8, 0], [20, 8, 0]], RED, live);
+    o += wire([[15, 6, 2.6], [15, 7.4, 0], [19.4, 7.4, 0], [20, 8, 0]], rb, live);
+    o += wire([[6, 6, 2.6], [6, 9, 0], [21, 9, 0]], BLK, live, true);
+    o += wire([[16, 6, 2.6], [16, 9.6, 0], [20.4, 9.6, 0], [21, 9, 0]], bb, live, true);
+    if (st.rev) { const [x, y] = P(20, 8, 1); o += `<text x="${x}" y="${y}" font-size="22" font-weight="700" fill="${RED}" text-anchor="middle">✕</text>`; }
+  } else {
+    o += `<g class="part" data-part="jumper">` + wire([[6, 6, 2.6], [6, 7, 0], [15, 7, 0], [15, 6, 2.6]], '#8a5a2b', live) + `</g>`;
+    o += wire([[5, 6, 2.6], [5, 8, 0], [20, 8, 0]], RED, live);
+    o += wire([[16, 6, 2.6], [16, 9, 0], [21, 9, 0]], BLK, live, true);
+  }
+  o += `<g class="part" data-part="${st.two && st.mode === 'par' ? 'ybranch' : 'mc4'}">` + box(19.6, 7.6, 0, 0.8, 0.8, 0.5, '#2a2a2a') + box(20.6, 8.6, 0, 0.8, 0.8, 0.5, '#2a2a2a') + `</g>`;
+  const lp = st.plug ? [[20, 8, 0], [23, 8, 0], [23, 5.6, 0], [23, 5, 1.5]] : [[21.2, 7.6, 0], [23, 7.6, 0], [23, 5.6, 0], [23, 5, 1.5]];
+  const ln = st.plug ? [[21, 9, 0], [24, 9, 0], [24, 5.6, 0], [24, 5, 1.5]] : [[22.2, 8.6, 0], [24, 8.6, 0], [24, 5.6, 0], [24, 5, 1.5]];
+  o += wire(lp, RED, live, false, 4, !st.plug) + wire(ln, BLK, live, true, 4, !st.plug);
+
+  o += `<g class="part" data-part="ctrl">` + box(22, 3, 0, 6, 2, 8, '#3a4256');
+  const lcdCol = c.burnt ? '#f0a596' : c.over ? '#f6d48a' : c.charging ? '#b9dca0' : '#7d8573';
+  const lcdTxt = c.burnt ? 'OVP!' : c.over ? `${c.a.voc.toFixed(0)}V!` : `${(c.charging ? c.a.pwm : 0).toFixed(1)}A`;
+  o += `<g transform="${faceY(22, 5, 0)}"><rect x="${0.8 * K.S}" y="${-7.2 * K.S}" width="${4.4 * K.S}" height="${2.8 * K.S}" rx="3" fill="${lcdCol}" class="ink"/><text x="${3 * K.S}" y="${-5.5 * K.S}" text-anchor="middle" font-size="15" font-weight="700" fill="#1d2a18">${lcdTxt}</text>`;
+  [[1, '#c84030'], [2, '#222'], [3, '#c84030'], [4, '#222'], [5, '#c84030'], [5.6, '#222']].forEach(([u, f]) => o += `<rect x="${u * K.S - 5}" y="${-2 * K.S}" width="10" height="10" fill="${f}" class="ink"/>`);
+  o += `<text x="${1.5 * K.S}" y="${-2.6 * K.S}" text-anchor="middle" font-size="10" fill="#e9e4d6">☀</text><text x="${3.5 * K.S}" y="${-2.6 * K.S}" text-anchor="middle" font-size="10" fill="#e9e4d6">▮</text></g></g>`;
+  if (c.burnt) { const [x, y] = P(25, 4, 8.5); for (let i = 0; i < 3; i++) o += `<circle class="smoke" style="animation-delay:${i * .5}s" cx="${x + (i - 1) * 12}" cy="${y - 6}" r="${9 + i * 3}" fill="#8a8577" opacity=".6"/>`; }
+
+  const big = st.batt !== '26', h1 = big ? 6.5 : 5, d1 = big ? 4.5 : 4, col1 = big ? '#2c4f45' : '#2f2f33';
+  o += `<g class="part" data-part="batt">` + box(30, 3, 0, 6, d1, h1, col1);
+  o += `<g transform="${faceY(30, 3 + d1, 0)}"><text x="${3 * K.S}" y="${-h1 / 2 * K.S}" text-anchor="middle" font-size="11" font-weight="700" fill="#eee">${big ? '42Ah' : '26Ah'}</text></g>`;
+  o += box(31, 4, h1, 1, 1, 0.4, RED) + box(34, 4, h1, 1, 1, 0.4, '#222') + `</g>`;
+  const fy = 3 + d1 + 0.05;
+  o += wire([[25, 5, 1.5], [25, 5.7, 0], [25, fy + 0.6, 0], [31.5, fy + 0.6, 0], [31.5, fy, 0.3], [31.5, fy, h1 + 0.3], [31.5, 4.5, h1 + 0.4]], RED, live);
+  o += wire([[26, 5, 1.5], [26, 5.7, 0], [26, fy + 1.1, 0], [34.5, fy + 1.1, 0], [34.5, fy, 0.3], [34.5, fy, h1 + 0.3], [34.5, 4.5, h1 + 0.4]], BLK, live, true);
+  if (st.batt === 'both') {
+    o += `<g class="part" data-part="oldbatt">` + box(30, 10.5, 0, 6, 4, 5, '#5a5048') + box(31, 11.5, 5, 1, 1, 0.4, RED) + box(34, 11.5, 5, 1, 1, 0.4, '#222');
+    o += `<g transform="${faceY(30, 14.5, 0)}"><text x="${3 * K.S}" y="${-2.5 * K.S}" text-anchor="middle" font-size="10" font-weight="700" fill="#eee">OLD 26Ah</text></g></g>`;
+    o += wire([[31.5, 4.5, h1 + 0.4], [31.5, 8, h1 + 1.2], [31.5, 12, 5.4]], RED, true, true, 4) + wire([[34.5, 4.5, h1 + 0.4], [34.5, 8, h1 + 1.2], [34.5, 12, 5.4]], BLK, true, false, 4);
+  }
+  o += `</g>`;
+
+  const nm = nodeMap();
+  o += anchor('p1-pos', nm.p1p, 'Panel 1 +', [5, 6, 2.6]) + anchor('p1-neg', nm.p1n, 'Panel 1 −', [6, 6, 2.6]);
+  if (st.two) o += anchor('p2-pos', nm.p2p, 'Panel 2 +', [15, 6, 2.6]) + anchor('p2-neg', nm.p2n, 'Panel 2 −', [16, 6, 2.6]);
+  o += anchor('arr-pos', 'pv+', 'Array output +', [20, 8, 0.5]) + anchor('arr-neg', 'pv-', 'Array output −', [21, 9, 0.5]);
+  o += anchor('ctl-pv-pos', 'cpv+', 'Controller PV +', [23, 5, 1.7]) + anchor('ctl-pv-neg', 'neg', 'Controller PV −', [24, 5, 1.7]);
+  o += anchor('ctl-bat-pos', 'bat+', 'Controller BAT +', [25, 5, 1.7]) + anchor('ctl-bat-neg', 'neg', 'Controller BAT −', [26, 5, 1.7]);
+  o += anchor('bat-pos', 'bat+', 'Battery +', [31.5, 4.5, h1 + 0.4]) + anchor('bat-neg', 'neg', 'Battery −', [34.5, 4.5, h1 + 0.4]);
+  if (st.batt === 'both') o += anchor('old-pos', 'bat+', 'Old battery +', [31.5, 12, 5.4]) + anchor('old-neg', 'neg', 'Old battery −', [34.5, 12, 5.4]);
+
+  const [cx, cy] = P(25, 3, 8);
+  const pvCol = c.over ? RED : '#1d1d1b';
+  o += `<g class="lbl"><rect x="${cx - 70}" y="${cy - 112}" width="140" height="22" rx="11" fill="#fbf8f1" stroke="${pvCol}" stroke-width="1.6"/><text x="${cx}" y="${cy - 97}" text-anchor="middle" font-size="11" font-weight="700" fill="${pvCol}">PV IN ${st.plug ? c.a.voc.toFixed(1) : '0.0'}V / ${st.plug ? c.a.isc.toFixed(2) : '0.00'}A</text></g>`;
+
+  const lbl = [['p1', [5.5, 1, 9], [-40, -40], 'PANEL 1 · LOOM 55W']];
+  if (st.two) lbl.push(['p2', [15.5, 1, 9], [30, -50], st.mix ? 'PANEL 2 · DIFFERENT MODEL' : 'PANEL 2 · LOOM 55W']);
+  lbl.push([st.two && st.mode === 'par' ? 'ybranch' : 'mc4', [20, 8, 0.5], [-60, 70], st.two && st.mode === 'par' ? 'MC4 Y-BRANCH' : 'MC4 CONNECTORS']);
+  if (st.two && st.mode === 'ser') lbl.push(['jumper', [10.5, 7, 0], [-80, 60], 'SERIES JUMPER']);
+  lbl.push(['ctrl', [22, 3, 8], [30, -30], 'CONTROLLER 10A PWM']);
+  lbl.push(['batt', [36, 3 + d1, h1 / 2], [60, -70], BATTS[st.batt === 'both' ? 42 : st.batt].label]);
+  if (st.batt === 'both') lbl.push(['oldbatt', [30, 14.5, 2.5], [-110, 20], 'OLD 26Ah (wrong)']);
+  lbl.forEach(([id, at, off, t]) => { const [ax, ay] = P(...at); o += pill(ax + off[0], ay + off[1], t, id, ax, ay, st.sel); });
+  return o;
+}
+
+const PARTS = {
+  p1: { name: 'Panel 1 · Loom 55W', rows: [['Vmp / Imp', '21V / 2.62A'], ['Voc / Isc', '24.5V / 2.83A'], ['Now', 'This panel is already installed']] },
+  p2: { name: 'Panel 2', rows: [['Rule', 'Buy the same model: Loom 55W (Vmp 21V, Imp 2.62A)'], ['Why', 'Mixing different panels lowers performance'], ['Different model (demo)', 'Generic ~40W, Vmp 18V, Imp 2.22A (example only)']] },
+  ybranch: { name: 'MC4 Y-branch pair', rows: [['Job', 'Both panel + together, both − together (parallel)'], ['Price', '₹150–300 a pair'], ['Result', '~5.2A peak (max 5.66A Isc), voltage stays ~21V'], ['Careful', 'One Y for + only, one Y for − only. Never mix them']] },
+  mc4: { name: 'MC4 connectors', rows: [['Job', 'Plug the array into the controller cable'], ['Unplug', 'Unplug here to measure true open-circuit Voc'], ['Rule', 'Unplug the panel side before the battery side']] },
+  jumper: { name: 'Series jumper', rows: [['Job', 'Panel 1 − to panel 2 +'], ['Result', 'Voc ~49V, current stays ~2.6A'], ['Plan', '"Do not wire in series": it sits at the controller limit'], ['PWM', 'PWM pulls it down to ~13V anyway, so the extra voltage is wasted']] },
+  ctrl: { name: 'Charge controller 10A PWM', rows: [['Current limit', '10A (two panels Isc 5.66A, safe)'], ['Max PV input', 'Open item: check the manual/sticker. 50V safe, 25V risky'], ['PWM', 'Runs the panel at battery voltage (~13V)']] },
+  batt: { name: 'Battery', rows: [['26Ah', 'Usable ~13Ah/day (50%)'], ['42Ah', 'Best with 2 panels: usable ~21Ah'], ['Plan', 'A 40–42Ah battery suits 2 panels best']] },
+  oldbatt: { name: 'Old 26Ah (parallel — wrong)', rows: [['Rule', 'Never parallel the old 26Ah with the new one'], ['Why', 'Different internal resistance and age: the old one drags the new one, charge does not split evenly'], ['Do', 'Use it separately or exchange it']] },
+};
+const select = makeParts(PARTS, id => { st.sel = id; render(); });
+
+const tick = makeChecklist([
+  ['two', 'Add a second same-model panel in parallel (Y-branch)'],
+  ['voc', 'Unplug the parallel array and measure Voc with the meter (~24.5V)'],
+  ['clamp', 'Measure the array while charging and see the PWM clamp (~13V)'],
+  ['ah', 'See ~20–24Ah/day from 2 panels'],
+  ['series', 'Try series and watch the controller limit get crossed'],
+  ['cold', '50V controller + series: check the cold-morning Voc estimate'],
+  ['mix', 'Mix a different model and see the loss'],
+  ['bigbatt', 'Re-check the bottleneck with a 42Ah battery'],
+  ['oldnew', 'See the damage of old + new batteries in parallel'],
+], () => log('🎉 Fig. 09 practice task complete!'));
+
+renderQuiz([
+  ['Two Loom 55W panels in series: what is the Voc?', ['~24.5V', '~49V', '~12V'], 1, 'In series voltages add: 24.5 + 24.5 ≈ 49V, even more on a cold morning.'],
+  ['What adds up in parallel (Y-branch)?', ['Voltage', 'Current', 'Both'], 1, 'In parallel currents add (2.62 + 2.62 ≈ 5.2A), the voltage stays ~21V.'],
+  ['A different-model panel in series?', ['No difference', 'The whole string drops to the weaker panel\'s current', 'Voltage halves'], 1, 'One current flows through a series string, and the weakest panel sets it.'],
+  ['2 panels (~22Ah/day) and a 26Ah battery. What is the bottleneck?', ['Panels', 'Battery: it can only take ~13Ah usable per day', 'Controller'], 1, 'That is why step 3 of the plan is a 40–42Ah battery.'],
+  ['Why not parallel the old 26Ah with a new 42Ah?', ['Capacity doubles, it is safe', 'The old one drags the new one down, both age faster', 'It becomes 24V'], 1, 'Different age and resistance means uneven charge/discharge. Use separately or exchange.'],
+]);
+
+const actions = {
+  bTwo() { st.two = !st.two; log(st.two ? `Second panel added (${st.mode === 'par' ? 'parallel, MC4 Y-branch' : 'series'}).` : 'Second panel removed.'); },
+  bPar() { st.mode = 'par'; if (!st.two) log('Add the second panel first.', 'w'); else log('Parallel: both + into one Y, both − into the other.'); },
+  bSer() {
+    st.mode = 'ser';
+    if (!st.two) return log('Add the second panel first.', 'w');
+    const a = arrayIV();
+    log(`Series: Voc ${a.voc.toFixed(1)}V. Controller max PV ${st.lim}V.`, a.voc > st.lim ? 'e' : 'w');
+  },
+  bMix() {
+    st.mix = !st.mix;
+    const same = { ...st, mix: false }, mixed = { ...st, mix: true };
+    log(st.mix ? `Panel 2 is now a different model (Vmp 18V, Imp 2.22A). Daily: ${dailyAh(same).toFixed(1)}Ah → ${dailyAh(mixed).toFixed(1)}Ah.` : 'Panel 2 back to Loom 55W (same model).', st.mix ? 'w' : '');
+  },
+  bPlug() { st.plug = !st.plug; log(st.plug ? 'Array plugged back into the controller.' : 'Array unplugged at the MC4. The array output now shows open-circuit Voc.'); },
+  mVoc() {
+    Multimeter.set({ knob: 'V', ac: false, socket: 'VmA' });
+    Multimeter.attach('red', 'arr-pos'); Multimeter.attach('black', 'arr-neg');
+    const c = calc();
+    if (c.charging) log('🔧 Meter on the array output while charging: PWM clamps it to ~13V. Unplug the array to see the true Voc.', 'w');
+    else log(`🔧 Meter on the array output (open circuit, Voc ≈ ${c.a.voc.toFixed(2)}V, controller max ${st.lim}V).`, c.a.voc > st.lim ? 'e' : '');
+  },
+  mIsc() {
+    Multimeter.set({ knob: 'A', ac: false, socket: '10A' });
+    Multimeter.attach('red', 'arr-pos'); Multimeter.attach('black', 'arr-neg');
+    log(`🔧 Meter in A / 10A across the array output: Isc ≈ ${arrayIV().isc.toFixed(2)}A (controller limit 10A). Move the red plug back to VΩmA afterwards!`);
+  },
+  mCold() {
+    const v = coldVoc();
+    log(`Cold morning (air ${st.amb}°C, sun ~300 W/m²): Voc ≈ ${v.toFixed(1)}V vs limit ${st.lim}V. ${v > st.lim - 1 ? 'At or above the limit!' : 'Still inside the limit.'}`, v > st.lim - 1 ? 'e' : '');
+    if (st.two && st.mode === 'ser' && st.lim === 50) tick('cold');
+  },
+  oSeries() { st.two = true; st.mode = 'ser'; st.lim = 25; st.plug = true; $('cLim').value = '25'; st.rev = false; log('💥 Series + 25V controller: ~45–49V input. The controller\'s PV side can burn.', 'e'); },
+  oMix() {
+    st.two = true; st.mode = 'ser'; st.mix = true; st.lim = 50; $('cLim').value = '50';
+    const a = arrayIV(), same = arrayIV(undefined, undefined, { ...st, mix: false });
+    log(`Different model in series: MPP ${(same.mpp[0] * same.mpp[1]).toFixed(0)}W → ${(a.mpp[0] * a.mpp[1]).toFixed(0)}W. The weaker panel sets the whole string's current.`, 'w');
+    tick('mix');
+  },
+  oRev() { st.two = true; st.mode = 'par'; st.rev = true; log('Panel 2 reversed in the Y-branch: the panels short each other. Output ~0, bypass diodes get hot.', 'e'); },
+  oOldNew() { st.batt = 'both'; $('cBatt').value = 'both'; log('Old 26Ah + new 42Ah in parallel: different voltage/resistance, the new one keeps feeding the old one. Both lose life.', 'e'); },
+  oFix() {
+    Object.assign(st, { two: true, mode: 'par', mix: false, rev: false, lim: 50, batt: '42', plug: true });
+    $('cLim').value = '50'; $('cBatt').value = '42';
+    log('Correct upgrade: 2× Loom 55W in parallel (Y-branch), 50V-limit controller, new 42Ah battery.');
+  },
+};
+
+const pair = (e, a, b) => (e.redNode === a && e.blackNode === b) || (e.redNode === b && e.blackNode === a);
+Multimeter.on(e => {
+  if (e.type === 'reading') {
+    log(`📟 ${e.text} (${e.knob}${e.knob === 'V' || e.knob === 'A' ? (e.ac ? ' AC' : ' DC') : ''}, red: ${e.red}, black: ${e.black})`);
+    const onArray = pair(e, 'pv+', 'pv-') || pair(e, 'pv+', 'neg') || pair(e, 'cpv+', 'neg');
+    if (onArray && e.knob === 'V' && !e.ac) {
+      if (!st.plug && st.two && st.mode === 'par' && !st.rev && !st.mix && Math.abs(e.value) >= 20) tick('voc');
+      if (st.plug && calc().charging && Math.abs(e.value) < 15) { tick('clamp'); log('That is the PWM clamp: the array is pulled down to battery voltage while charging.'); }
+    }
+  }
+  if (e.type === 'short') log(`💥 SHORT through the meter (~${Math.round(e.amps)}A). Across the battery that means sparks and melted probe tips.`, 'e');
+});
+
+function render() {
+  const c = calc();
+  $('fig').innerHTML = build(c);
+  $('sVoc').textContent = `${c.a.voc.toFixed(1)}V`; $('sVoc').className = c.over ? 'bad' : '';
+  $('sIsc').textContent = `${c.a.isc.toFixed(2)}A`;
+  $('sChg').textContent = c.charging ? `${c.a.pwm.toFixed(2)}A` : '0A';
+  $('sAh').textContent = `${c.day.toFixed(1)}Ah`;
+  $('sStatus').textContent = c.status; $('sStatus').className = c.bad ? 'bad' : '';
+  $('oG').textContent = `${st.G} W/m²`; $('oAmb').textContent = `${st.amb}°C`; $('oWob').textContent = st.wob;
+  $('bTwo').textContent = st.two ? 'Remove second panel' : 'Add second panel'; $('bTwo').classList.toggle('on', st.two);
+  $('bPar').classList.toggle('on', st.two && st.mode === 'par'); $('bSer').classList.toggle('on', st.two && st.mode === 'ser');
+  $('bMix').textContent = st.mix ? 'Panel 2: different model' : 'Panel 2: same model'; $('bMix').classList.toggle('warn', st.mix);
+  $('bPlug').textContent = st.plug ? 'Unplug array (MC4)' : 'Plug array back in'; $('bPlug').classList.toggle('on', !st.plug);
+
+  const one = dailyAh({ ...st, two: false }), usable = st.batt === 'both' ? 34 : BATTS[st.batt].usable;
+  const neck = c.day > usable ? `Battery (${usable}Ah usable): ${(c.day - usable).toFixed(1)}Ah of panel output wasted` : c.day < 8 ? 'Panels (low sun or no upgrade)' : 'Well balanced';
+  $('dayCard').innerHTML = `<table><tr><td>1 panel</td><td>~${one.toFixed(1)}Ah/day</td></tr><tr><td>Current setup</td><td>~${c.day.toFixed(1)}Ah/day</td></tr>`
+    + `<tr><td>Battery usable</td><td>~${usable}Ah${st.batt === 'both' ? ' (on paper; mismatched in reality)' : ''}</td></tr><tr><td>Bottleneck</td><td>${neck}</td></tr>`
+    + `<tr><td>Plan</td><td>1 panel ~10–12Ah, 2 panels ~20–24Ah (good sun)</td></tr></table>`;
+
+  let h;
+  if (c.burnt) h = 'Controller PV limit crossed! Undo series or get a 50V+ controller.';
+  else if (c.over) h = 'Voc is right at the limit. A cold morning will cross it.';
+  else if (st.two && st.rev && st.mode === 'par') h = 'One panel is reversed. Check the Y-branch polarity.';
+  else if (st.batt === 'both') h = 'Never parallel an old and a new battery.';
+  else if (!st.plug) h = 'Array unplugged. Open the 🔧 meter and measure the array output: that is the real Voc.';
+  else if (!st.two) h = 'One panel. Press "Add second panel" and watch the daily charge.';
+  else if (st.mix) h = 'Mixed models. Buy the same model.';
+  else if (c.day > usable) h = 'The panels give more than the battery can take. Try 42Ah.';
+  else h = 'Correct setup. Now make a mistake, or probe it with the 🔧 meter.';
+  $('hint').textContent = h; $('hint').classList.toggle('bad', c.bad);
+
+  if (st.two && st.mode === 'par' && !st.mix && !st.rev) tick('two');
+  if (st.two && st.mode === 'par' && !st.mix && !st.rev && c.day >= 20) tick('ah');
+  if (st.two && st.mode === 'ser' && c.over) tick('series');
+  if (st.two && st.mix) tick('mix');
+  if (st.two && st.batt === '42') tick('bigbatt');
+  if (st.batt === 'both') tick('oldnew');
+}
+
+['bTwo', 'bPar', 'bSer', 'bMix', 'bPlug'].forEach(id => $(id).onclick = () => { actions[id](); render(); });
+bindMenus(actions, render);
+bindFigClicks($('fig'), select);
+const num = (id, key) => $(id).oninput = e => { st[key] = +e.target.value; render(); };
+num('cG', 'G'); num('cAmb', 'amb'); num('cWob', 'wob');
+$('cLim').onchange = e => { st.lim = +e.target.value; log(`Controller max PV input: ${st.lim}V.`); render(); };
+$('cWx').onchange = e => { st.wx = +e.target.value; render(); };
+$('cBatt').onchange = e => { st.batt = e.target.value; log(`Battery: ${e.target.selectedOptions[0].text}.`, st.batt === 'both' ? 'e' : ''); render(); };
+
+log('Right now: 1 Loom 55W panel. Upgrade plan: a second panel of the same model, in parallel.');
+render();
+</script>
+</body>
+</html>
