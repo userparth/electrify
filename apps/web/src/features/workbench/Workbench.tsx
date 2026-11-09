@@ -9,6 +9,7 @@ import type { Doc } from './model';
 import { runner, useBench } from './store';
 import { asset } from '@/lib/paths';
 import { MobileWorkbench, useIsPhone } from './Mobile';
+import { BenchTour } from '../onboarding/Tour';
 
 const IsoView = dynamic(() => import('./iso/IsoView'), { ssr: false, loading: () => <div className="wb-canvas wb-3d-loading">Loading…</div> });
 
@@ -31,9 +32,11 @@ export function Workbench({ storageKey, initial, dt, side, title, peek, heading 
     return () => { removeEventListener('keydown', key); runner.stop(); };
   }, [storageKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (phone) return <MobileWorkbench side={side} peek={peek} heading={heading} />;
+  const tour = !storageKey && <BenchTour phone={phone} />;
+  if (phone) return <>{tour}<MobileWorkbench side={side} peek={peek} heading={heading} /></>;
   return (
     <div className="wb">
+      {tour}
       <header className="wb-head"><a href={asset('/')} className="wb-brand"><b>⚡ Electronics Bench</b></a>{title ?? <><a href={asset('/learn/')} className="wb-muted">Lessons</a><a href={asset('/learn/#solar')} className="wb-muted">Solar module</a></>}<Toolbar /><AccountButton /></header>
       <Palette />
       <div className="wb-center">{view3d ? <IsoView /> : <Canvas />}<CodePanel /></div>

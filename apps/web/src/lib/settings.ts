@@ -70,7 +70,7 @@ if (typeof window !== 'undefined') {
     const user = (e as CustomEvent<{ settings?: Partial<Settings> | null } | null>).detail;
     signedIn = !!user;
     if (!user) { useSettings.setState({ synced: 'local' }); return; }
-    if (user.settings) {
+    if (user.settings?.palette || user.settings?.font) {
       const s = valid(user.settings);
       apply(s); localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); useSettings.setState({ settings: s, synced: 'account' });
     } else push(useSettings.getState().settings);

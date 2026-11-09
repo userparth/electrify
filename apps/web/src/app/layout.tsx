@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Atkinson_Hyperlegible_Mono, Atkinson_Hyperlegible_Next, Figtree, Geist_Mono, IBM_Plex_Mono, IBM_Plex_Sans, Inter, JetBrains_Mono } from 'next/font/google';
 import { EARLY_SCRIPT } from '@/lib/settings-core';
+import { OnboardingGate } from '@/features/onboarding/Onboarding';
 import './globals.css';
 
 const atk = Atkinson_Hyperlegible_Next({ subsets: ['latin'], variable: '--f-atk', weight: ['400', '600', '700'] });
@@ -21,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" data-theme="paper" data-font="atkinson" suppressHydrationWarning className={[atk, atkm, inter, jb, plex, plexm, fig, geistm].map(f => f.variable).join(' ')}>
       <head><script dangerouslySetInnerHTML={{ __html: EARLY_SCRIPT }} /></head>
-      <body>{children}</body>
+      <body>{children}<OnboardingGate /></body>
     </html>
   );
 }

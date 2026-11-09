@@ -5,6 +5,8 @@ import { MODULES } from '@/content';
 import { loadProgress, type LessonProgress } from '../learn/check';
 import { AccountButton } from './AccountButton';
 import { classesApi, useAccount, type EnrolledClass, type TeachingClass } from './api';
+import { useProfile } from '@/lib/profile';
+import { t } from '@/lib/i18n';
 
 const ALL = MODULES.flatMap(m => m.lessons.map(l => ({ module: m, lesson: l })));
 const BY_ID = new Map(ALL.map(x => [x.lesson.id, x]));
@@ -47,13 +49,14 @@ function AssignLessons({ c, onSaved }: { c: TeachingClass; onSaved(assigned: str
 }
 
 function Shell({ title, children }: { title: string; children: React.ReactNode }) {
-  const { user, available, loaded, signIn } = useAccount();
+  const { user, available, loaded, signIn } = useAccount(), under13 = useProfile(s => s.profile.under13);
   return (
     <main className="home acct-page">
       <div className="acct-top"><Link href="/">← Electronics Bench</Link><AccountButton /></div>
       <h1>{title}</h1>
       {!loaded ? <p>Loading…</p>
         : !available ? <p>Accounts aren’t switched on for this server yet. Lessons still save your progress in this browser.</p>
+          : !user && under13 ? <p>{t('account.under13')}</p>
           : !user ? <p><button className="btn on" onClick={signIn}>Sign in with Google</button> to continue.</p>
             : children}
     </main>

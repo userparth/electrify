@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { asset } from '@/lib/paths';
 import '@/lib/settings';
+import '@/lib/profile';
 import { loadProgress, type LessonProgress } from '../learn/check';
 
 export interface User { id: number; email: string; name: string; picture: string; role: 'student' | 'teacher'; settings?: { palette?: string; font?: string } | null }

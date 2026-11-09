@@ -7,13 +7,14 @@ export default function Page() {
     <main className="home legal">
       <Link href="/">← Electronics Bench</Link>
       <h1>Privacy policy</h1>
-      <p><i>Last updated: 9 November 2026</i></p>
+      <p><i>Last updated: 10 November 2026</i></p>
       <p>Electronics Bench is a free, open-source electronics-learning website run by Parth Sharma. You can use every lesson and the workbench without an account. Signing in is optional and only used to save your progress and to join a teacher&apos;s class.</p>
       <h2>What we store when you sign in with Google</h2>
       <ul>
         <li>Your Google account ID, email address, name and profile picture URL (the <code>openid email profile</code> scopes). We never see your Google password.</li>
         <li>Your lesson progress: which steps and quiz questions you completed.</li>
         <li>Classes you create or join, and the lessons a teacher assigns to a class. A teacher can see the name, email and lesson progress of students in their class.</li>
+        <li>Your settings (colours, font) and your answers from the welcome steps (student or teacher, what you want to learn, your level), so your recommended path follows you.</li>
         <li>A session cookie that keeps you signed in for up to 30 days.</li>
       </ul>
       <h2>What we don&apos;t do</h2>
@@ -27,8 +28,8 @@ export default function Page() {
       <p>On our hosting provider&apos;s server (Hostinger) in a MySQL database, over HTTPS.</p>
       <h2>Deleting your data</h2>
       <p>Open <Link href="/account">My progress</Link> and use <b>Delete my account</b>: your account, progress, classes and lesson assignments are removed from the server at once. You can also email <a href="mailto:userparth@gmail.com">userparth@gmail.com</a> from the address you signed in with. You can also remove the app&apos;s access any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
-      <h2>Children</h2>
-      <p>The site is meant for school and college students. Younger students should use it with a teacher or parent; the only personal data kept is what is listed above.</p>
+      <h2>Children under 13</h2>
+      <p>If you tell us you are under 13, sign-in is switched off on that device: you can use every lesson and the bench, and everything stays in your browser. We never collect an account or any personal data from children under 13.</p>
       <h2>Changes</h2>
       <p>If this policy changes we&apos;ll update the date above. Questions: <a href="mailto:userparth@gmail.com">userparth@gmail.com</a>.</p>
       <p><Link href="/terms">Terms of use</Link></p>
