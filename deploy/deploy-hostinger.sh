@@ -2,9 +2,11 @@
 # Static build of apps/web + PHP compile endpoint, uploaded over SSH to shared hosting.
 # Settings come from deploy/.env.deploy (not committed): EB_DEPLOY_HOST, EB_DEPLOY_PORT, EB_DEPLOY_KEY,
 # EB_DEPLOY_DIR (web folder), EB_TOOLS (folder with bin/arduino-cli), EB_BASE_PATH (e.g. /electrify).
+# Usage: deploy-hostinger.sh [profile]  — a profile file deploy/.env.deploy.<profile> overrides those values.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source deploy/.env.deploy
+if [ -n "${1:-}" ]; then source "deploy/.env.deploy.$1"; fi
 
 SSH=(ssh -i "$EB_DEPLOY_KEY" -p "$EB_DEPLOY_PORT" -o BatchMode=yes)
 API=apps/web/src/app/api
