@@ -419,8 +419,10 @@ function Mat({ cam, x0, y0, x1, y1 }: { cam: Cam; x0: number; y0: number; x1: nu
 }
 
 /** Invisible hit targets on every pin and breadboard hole; part pins are drawn last so they win over holes. */
+const COARSE = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
 const PinLayer = memo(function PinLayer({ cam, pins, pinPos, holes }: { cam: Cam; pins: PlacedPin[]; pinPos: (p: PlacedPin) => V3; holes: boolean }) {
-  return <g>{pins.filter(p => (p.inst.type === 'breadboard') === holes).map(p => { const [x, y] = project(cam, ...pinPos(p)); return <circle key={p.key} data-pin={p.key} cx={x} cy={y} r={p.inst.type === 'breadboard' ? 4 : 5.5} fill="transparent" />; })}</g>;
+  const r = (holes ? 4 : 5.5) * (COARSE ? 1.8 : 1);
+  return <g>{pins.filter(p => (p.inst.type === 'breadboard') === holes).map(p => { const [x, y] = project(cam, ...pinPos(p)); return <circle key={p.key} data-pin={p.key} cx={x} cy={y} r={r} fill="transparent" />; })}</g>;
 });
 
 function PinHover({ cam, hover, from, rubber, pins, pinAt, pinPos }: { cam: Cam; hover: string | null; from: string | null; rubber: [number, number] | null; pins: PlacedPin[]; pinAt: Map<string, PlacedPin>; pinPos: (p: PlacedPin) => V3 }) {

@@ -125,3 +125,52 @@ kbd{border:1.2px solid currentColor;border-radius:4px;padding:0 4px;font-size:10
 .iso-tools{position:absolute;top:10px;left:10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .iso-wob{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;background:var(--paper);border:1.6px solid var(--ink);border-radius:14px;padding:3px 10px;box-shadow:2px 2px 0 var(--ink)}
 .iso-wob input{width:80px;accent-color:var(--ink)}
+.mb{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg);overscroll-behavior:none}
+.mb-top{display:flex;align-items:center;gap:8px;padding:8px 10px;padding-top:max(8px,env(safe-area-inset-top));border-bottom:1.6px solid var(--ink);background:var(--paper)}
+.mb-brand{font-size:20px;text-decoration:none}
+.mb-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:700}
+.mb-icon{min-width:38px;height:36px;border:1.6px solid var(--ink);border-radius:12px;background:var(--paper);font:inherit;font-size:15px;font-weight:700;box-shadow:2px 2px 0 var(--ink);color:var(--ink)}
+.mb-icon.on{background:var(--ink);color:var(--paper)}
+.mb-top .wb-seg .btn{padding:6px 10px}
+.mb-stage{flex:1;position:relative;min-height:0}
+.mb-stage>.wb-canvas{position:absolute;inset:0}
+.mb-stage .wb-3d-hint{display:none}
+.mb-stage .iso-tools{top:8px;left:8px;right:8px}
+.mb-peek{position:absolute;left:10px;right:10px;bottom:12px;display:flex;gap:8px;align-items:center;text-align:left;font:inherit;font-size:12.5px;background:var(--paper);border:1.6px solid var(--ink);border-radius:14px;padding:10px 12px;box-shadow:3px 3px 0 var(--ink);color:var(--ink)}
+.mb-peek b{background:var(--ink);color:var(--paper);border-radius:8px;padding:2px 7px;font-size:11px}
+.mb-actions{position:absolute;left:8px;right:8px;bottom:64px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.mb-actions .btn{padding:8px 12px;font-size:12px}
+.mb-sheet{position:absolute;left:0;right:0;bottom:0;max-height:64%;display:flex;flex-direction:column;background:var(--paper);border-top:1.6px solid var(--ink);border-radius:20px 20px 0 0;box-shadow:0 -8px 28px rgba(29,29,27,.22);z-index:20;animation:mb-up .2s ease-out}
+.mb-sheet.tall{max-height:88%;height:88%}
+@keyframes mb-up{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+.mb-grab{width:44px;height:5px;border-radius:3px;background:#cfc8b6;border:0;margin:8px auto 2px;padding:0}
+.mb-sheet-head{display:flex;align-items:center;justify-content:space-between;padding:2px 14px 6px}
+.mb-sheet-head .mb-icon{min-width:32px;height:30px;box-shadow:none}
+.mb-sheet-body{overflow:auto;padding:0 14px 16px;-webkit-overflow-scrolling:touch}
+.mb-sheet .wb-palette{border:0;padding:0;overflow:visible}
+.mb-sheet .wb-palette>div{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mb-sheet .wb-cat{grid-column:1/-1;margin-top:8px}
+.mb-sheet .wb-pal{margin:0;cursor:pointer;padding:8px 10px}
+.mb-sheet .wb-search{width:100%;font-size:15px;padding:8px 10px;margin-bottom:4px;box-sizing:border-box}
+.mb-sheet .ls{box-shadow:none;border:0;padding:0}
+.mb-sheet .wb-code{border:0;padding:0;height:auto;min-height:0;background:none;overflow:visible}
+.mb-sheet .wb-code-body{display:flex;flex-direction:column;gap:10px;overflow:visible}
+.mb-sheet .wb-editor{min-height:46vh;flex:none}
+.mb-sheet .wb-serial-out{max-height:22vh;min-height:90px}
+.mb-sheet .wb-serial-in{font-size:15px}
+.mb-menu .wb-toolbar{display:flex;flex-direction:column;align-items:stretch;gap:8px}
+.mb-menu .wb-toolbar .wb-seg{display:none}
+.mb-menu .wb-toolbar>*{width:100%}
+.mb-menu .wb-grow{display:none}
+.mb-menu{display:flex;flex-direction:column;gap:10px}
+.mb-acct{display:flex;justify-content:flex-start}
+.mb-tabs{display:flex;border-top:1.6px solid var(--ink);background:var(--paper);padding-bottom:env(safe-area-inset-bottom);z-index:21}
+.mb-tabs button{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 0 9px;font:inherit;font-size:10.5px;font-weight:700;background:none;border:0;color:var(--ink)}
+.mb-tabs button span{font-size:17px;line-height:1.1}
+.mb-tabs button.on{background:var(--ink);color:var(--paper)}
+@media (max-width:760px){
+  .home{margin:6vh auto;padding:0 16px}
+  .home-grid{grid-template-columns:1fr;gap:12px}
+  .home h1{font-size:23px}
+  .acct-input{min-width:0;width:100%}
+}

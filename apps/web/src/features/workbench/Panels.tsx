@@ -6,12 +6,21 @@ import { useBench } from './store';
 
 const CATS: Category[] = ['Microcontrollers', 'Instruments', 'Boards', 'Power', 'Passive', 'Semiconductors', 'Switches', 'Digital ICs', 'Output'];
 
-export function Palette() {
+/** Drops a new part in the middle of what the user is looking at. */
+export function addAtCenter(type: string) {
+  const st = useBench.getState(), el = document.querySelector('.wb-canvas');
+  if (st.view3d) {
+    const xs = st.doc.parts.map(p => p.x), ys = st.doc.parts.map(p => p.y);
+    const cx = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 0, cy = ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 0;
+    return st.addPart(type, Math.round(cx), Math.round(cy + 4));
+  }
+  const w = el?.clientWidth ?? 600, h = el?.clientHeight ?? 400, { view } = st;
+  return st.addPart(type, Math.round((w / 2 - view.x) / view.zoom / 12), Math.round((h / 2 - view.y) / view.zoom / 12));
+}
+
+export function Palette({ onPick }: { onPick?: (type: string) => void } = {}) {
   const [q, setQ] = useState('');
-  const add = (type: string) => {
-    const { view } = useBench.getState();
-    useBench.getState().addPart(type, Math.round((300 - view.x) / view.zoom / 12), Math.round((200 - view.y) / view.zoom / 12));
-  };
+  const add = (type: string) => { addAtCenter(type); onPick?.(type); };
   const list = PARTS.filter(p => !q || `${p.name} ${p.blurb} ${p.type}`.toLowerCase().includes(q.toLowerCase()));
   return (
     <aside className="wb-palette">
@@ -23,7 +32,7 @@ export function Palette() {
           <div key={cat}>
             <div className="wb-cat">{cat}</div>
             {items.map(p => (
-              <div key={p.type} className="wb-pal" draggable onDragStart={e => { e.dataTransfer.setData('text/eb-part', p.type); e.dataTransfer.effectAllowed = 'copy'; }} onDoubleClick={() => add(p.type)} title="Drag onto the bench, or double-click">
+              <div key={p.type} className="wb-pal" draggable onDragStart={e => { e.dataTransfer.setData('text/eb-part', p.type); e.dataTransfer.effectAllowed = 'copy'; }} onDoubleClick={() => add(p.type)} onClick={onPick ? () => add(p.type) : undefined} title={onPick ? 'Tap to add' : 'Drag onto the bench, or double-click'}>
                 <b>{p.name}</b><small>{p.blurb}</small>
               </div>
             ))}

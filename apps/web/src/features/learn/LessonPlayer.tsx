@@ -81,6 +81,20 @@ function LessonPanel({ lesson, next, storageKey }: { lesson: Lesson; next?: { hr
   );
 }
 
+/** The phone layout's step pill: current step, or done. */
+function StepPeek({ lesson }: { lesson: Lesson }) {
+  const [p, setP] = useState<LessonProgress | undefined>();
+  useEffect(() => {
+    const read = () => setP(loadProgress()[lesson.id]);
+    read(); addEventListener('eb-progress', read);
+    return () => removeEventListener('eb-progress', read);
+  }, [lesson.id]);
+  const n = p?.steps ?? 0, cur = lesson.steps[n];
+  if (p?.done) return <><b>✓</b> Lesson complete</>;
+  if (!cur) return <><b>✓</b> Steps done · answer the quiz</>;
+  return <><b>{n + 1}/{lesson.steps.length}</b> {cur.title}</>;
+}
+
 export function LessonPlayer({ moduleId, lessonId }: { moduleId: string; lessonId: string }) {
   const mod = MODULES.find(m => m.id === moduleId), idx = mod?.lessons.findIndex(l => l.id === lessonId) ?? -1, lesson = mod?.lessons[idx];
   const nextLesson = mod && idx >= 0 ? mod.lessons[idx + 1] : undefined;
@@ -89,7 +103,7 @@ export function LessonPlayer({ moduleId, lessonId }: { moduleId: string; lessonI
   if (!mod || !lesson) return <main className="home"><h1>Lesson not found</h1><Link href="/learn">← All lessons</Link></main>;
   return (
     <Workbench
-      storageKey={key} initial={lesson.build} dt={lesson.dt} title={title}
+      storageKey={key} initial={lesson.build} dt={lesson.dt} title={title} heading={lesson.title} peek={<StepPeek lesson={lesson} />}
       side={<LessonPanel lesson={lesson} storageKey={key} next={nextLesson && { href: `/learn/${mod.id}/${nextLesson.id}`, title: nextLesson.title }} />}
     />
   );

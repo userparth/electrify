@@ -40,14 +40,24 @@ export function Canvas() {
     const r = svg.current!.getBoundingClientRect();
     return { x: (e.clientX - r.left - view.x) / view.zoom / GRID, y: (e.clientY - r.top - view.y) / view.zoom / GRID };
   };
+  const touch = useRef(false);
+  // Fingers are far less precise than a mouse, so pins snap from further away on touch.
   const nearestPin = (wx: number, wy: number, except?: string) => {
-    let best: PlacedPin | null = null, bd = SNAP_PX / GRID / Math.max(view.zoom, 0.5);
+    let best: PlacedPin | null = null, bd = SNAP_PX * (touch.current ? 2.4 : 1) / GRID / Math.max(view.zoom, 0.5);
     for (const p of pins) { if (p.key === except) continue; const d = Math.hypot(p.x - wx, p.y - wy); if (d < bd) { bd = d; best = p; } }
     return best;
   };
   const act = (id: string, patch: Props) => useBench.getState().setProps(id, patch, true);
 
+  const fingers = useRef(new Map<number, [number, number]>()), pinch = useRef<{ d: number; mx: number; my: number } | null>(null);
+  const pinchNow = () => { const [a, b] = [...fingers.current.values()]; return { d: Math.hypot(a![0] - b![0], a![1] - b![1]) || 1, mx: (a![0] + b![0]) / 2, my: (a![1] + b![1]) / 2 }; };
+
   const onPointerDown = (e: React.PointerEvent) => {
+    touch.current = e.pointerType === 'touch';
+    if (touch.current) {
+      fingers.current.set(e.pointerId, [e.clientX, e.clientY]);
+      if (fingers.current.size === 2) { setDrag(null); setHover(null); pinch.current = pinchNow(); svg.current!.setPointerCapture(e.pointerId); return; }
+    }
     if (e.button === 1 || e.altKey) { setDrag({ kind: 'pan', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y }); svg.current!.setPointerCapture(e.pointerId); return; }
     const t = e.target as Element, w = world(e);
     const pinEl = t.closest('[data-pin]'), partEl = t.closest('[data-part]'), wireEl = t.closest('[data-wire]'), endEl = t.closest('[data-end]');
@@ -56,8 +66,9 @@ export function Canvas() {
       const [wid, end] = endEl.getAttribute('data-end')!.split('|') as [string, 'a' | 'b'], wire = doc.wires.find(x => x.id === wid);
       if (wire) { useBench.getState().select({ kind: 'wire', id: wid }); setDrag({ kind: 'end', wire: wid, end, orig: wire[end], x: w.x, y: w.y }); svg.current!.setPointerCapture(e.pointerId); return; }
     }
-    if (pinEl || (endEl && e.shiftKey)) {
-      const p = pinEl ? pinAt.get(pinEl.getAttribute('data-pin')!) : nearestPin(w.x, w.y);
+    const touchPin = touch.current && !pinEl && !endEl ? nearestPin(w.x, w.y) : null;
+    if (pinEl || touchPin || (endEl && e.shiftKey)) {
+      const p = pinEl ? pinAt.get(pinEl.getAttribute('data-pin')!) : touchPin ?? nearestPin(w.x, w.y);
       if (p) { setDrag({ kind: 'wire', from: p, x: w.x, y: w.y }); svg.current!.setPointerCapture(e.pointerId); return; }
     }
     if (wireEl) { useBench.getState().select({ kind: 'wire', id: wireEl.getAttribute('data-wire')! }); return; }
@@ -74,6 +85,14 @@ export function Canvas() {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    if (fingers.current.has(e.pointerId)) fingers.current.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pinch.current && fingers.current.size === 2) {
+      const p0 = pinch.current, p1 = pinchNow(), r = svg.current!.getBoundingClientRect(), mx = p1.mx - r.left, my = p1.my - r.top;
+      const v = useBench.getState().view, zoom = Math.min(4, Math.max(0.3, v.zoom * p1.d / p0.d)), k = zoom / v.zoom;
+      useBench.getState().setView({ zoom, x: mx - (mx - v.x) * k + p1.mx - p0.mx, y: my - (my - v.y) * k + p1.my - p0.my });
+      pinch.current = p1;
+      return;
+    }
     const w = world(e);
     if (!drag) { setHover(nearestPin(w.x, w.y)); return; }
     if (drag.kind === 'pan') useBench.getState().setView({ x: drag.vx + e.clientX - drag.sx, y: drag.vy + e.clientY - drag.sy });
@@ -90,6 +109,8 @@ export function Canvas() {
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
+    fingers.current.delete(e.pointerId);
+    if (pinch.current) { if (fingers.current.size < 2) pinch.current = null; setDrag(null); return; }
     if (drag?.kind === 'wire') {
       const w = world(e), to = nearestPin(w.x, w.y, drag.from.key);
       if (to) useBench.getState().addWire(drag.from.key, to.key);
