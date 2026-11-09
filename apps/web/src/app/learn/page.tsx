@@ -1,13 +1,14 @@
 import Link from 'next/link';
 import { MODULES } from '@/content';
 import { Progress } from '@/features/learn/Progress';
+import { AccountButton } from '@/features/account/AccountButton';
 
 export const metadata = { title: 'Lessons · Electronics Bench' };
 
 export default function LearnPage() {
   return (
     <main className="home learn">
-      <p><Link href="/">← Electronics Bench</Link></p>
+      <div className="acct-top"><Link href="/">← Electronics Bench</Link><AccountButton /></div>
       <h1>Lessons</h1>
       <p>Each lesson opens a live circuit. Steps tick themselves when you get them right.</p>
       {MODULES.map(m => (

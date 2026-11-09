@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { asset } from '@/lib/paths';
+import { AccountButton } from '@/features/account/AccountButton';
 
 const MODULES = [
   { href: '/learn', title: 'Lessons', text: 'Guided lessons with a live circuit: steps tick themselves when you get them right, with hints, mistakes to try and a quiz.' },
@@ -10,6 +11,7 @@ const MODULES = [
 export default function Home() {
   return (
     <main className="home">
+      <div className="acct-top"><span /><AccountButton /></div>
       <h1>⚡ Electronics Bench</h1>
       <p>Learn electronics by building, running and breaking circuits on screen — then do it on real hardware.</p>
       <div className="home-grid">

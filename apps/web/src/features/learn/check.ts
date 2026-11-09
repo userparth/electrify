@@ -32,4 +32,5 @@ export function saveProgress(id: string, p: LessonProgress) {
   const all = loadProgress();
   all[id] = p;
   localStorage.setItem(KEY, JSON.stringify(all));
+  dispatchEvent(new Event('eb-progress'));
 }

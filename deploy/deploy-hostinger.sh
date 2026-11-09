@@ -22,6 +22,7 @@ restore; trap - EXIT
 
 mkdir -p apps/web/out/api
 sed "s|__TOOLS__|$EB_TOOLS|" deploy/php/compile.php > apps/web/out/api/compile.php
+for f in deploy/php/api/*; do sed "s|__TOOLS__|$EB_TOOLS|" "$f" > "apps/web/out/api/$(basename "$f")"; done
 sed "s|__BASE__|$EB_BASE_PATH|" deploy/htaccess > apps/web/out/.htaccess
 
 "${SSH[@]}" "$EB_DEPLOY_HOST" "mkdir -p '$EB_DEPLOY_DIR'"
