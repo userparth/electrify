@@ -1,6 +1,7 @@
 {
   "name": "electronics-bench",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "packageManager": "pnpm@10.28.1",
   "scripts": {
     "dev": "pnpm --filter web dev",
