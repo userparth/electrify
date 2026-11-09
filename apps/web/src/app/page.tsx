@@ -24,6 +24,7 @@ export default function Home() {
           </Link>
         ))}
       </div>
+      <footer className="home-foot"><Link href="/privacy">Privacy</Link> · <Link href="/terms">Terms</Link> · <a href="https://github.com/userparth/electrify">Source (AGPL-3.0)</a></footer>
     </main>
   );
 }

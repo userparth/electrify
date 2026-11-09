@@ -109,3 +109,7 @@ kbd{border:1.2px solid currentColor;border-radius:4px;padding:0 4px;font-size:10
 .acct-grid td:first-child{text-align:left;font-weight:700}
 .acct-grid td.ok{background:#c6ecd2}
 .acct-grid td.mid{background:#fff1c2}
+.home-foot{margin-top:28px;font-size:12.5px;color:#4b4840}
+.legal{max-width:720px}
+.legal h2{font-size:17px;margin:20px 0 6px}
+.legal li,.legal p{font-size:14px;line-height:1.55}
