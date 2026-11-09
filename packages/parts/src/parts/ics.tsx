@@ -156,6 +156,7 @@ export class OpAmp implements Element {
     return [-io, 0, 0, io > 0 ? io : 0, io < 0 ? io : 0];
   };
   private xLast = 0;
+  private voLast = NaN;
   stamp(ctx: Ctx) {
     const nodes = [this.out, this.inP, this.inN, this.vPos, this.vNeg], v = nodes.map(n => ctx.v(n));
     const half = Math.max(1e-3, (v[3]! - 1.5 - v[4]! - 0.02) / 2), x = this.gain * (v[1]! - v[2]!) / half;
@@ -165,12 +166,15 @@ export class OpAmp implements Element {
     if (xs !== x) ctx.limited();
     this.xLast = xs;
     const lin = v.slice(); lin[2] = lin[1]! - xs * half / this.gain;
+    // The current limit is flat far from target, so an unloaded output would bounce; walk it there in 1 V steps.
+    if (Number.isFinite(this.voLast) && Math.abs(v[0]! - this.voLast) > 1) { lin[0] = this.voLast + Math.sign(v[0]! - this.voLast); ctx.limited(); }
+    this.voLast = lin[0]!;
     const i0 = this.f(lin), J = nodes.map(() => nodes.map(() => 0));
     for (let c = 0; c < nodes.length; c++) { const w = lin.slice(); w[c]! += 1e-6; const i1 = this.f(w); for (let r = 0; r < nodes.length; r++) J[r]![c] = (i1[r]! - i0[r]!) / 1e-6; }
     const adj = i0.map((iv, r) => iv + J[r]!.reduce((acc, g, c) => acc + g * (v[c]! - lin[c]!), 0));
     ctx.jacobian(nodes, adj, J);
   }
-  reset() { this.xLast = 0; }
+  reset() { this.xLast = 0; this.voLast = NaN; }
 }
 
 /** Open-collector comparator: pulls OUT to V− when in− is above in+. */

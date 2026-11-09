@@ -89,6 +89,16 @@ describe('IC and sensor parts', () => {
     expect(s.v(pin('7'))).toBeGreaterThan(7.2); expect(s.v(pin('7'))).toBeLessThan(7.6);
   });
 
+  it('LM358 with an unused half still converges every step', () => {
+    const c = new Circuit(), vcc = c.node();
+    c.add(new VoltageSource(vcc, 0, 9));
+    const { pin } = mount(c, lm358, { '8': vcc, '4': 0, '3': 0, '2': 0 });
+    const s = new Simulator(c, { dt: 1e-4 });
+    expect(s.op()).toBe(true);
+    for (let i = 0; i < 50; i++) expect(s.step()).toBe(true);
+    expect(s.v(pin('7'))).toBeGreaterThan(0); expect(s.v(pin('7'))).toBeLessThan(7.5);
+  });
+
   it('LM393 output is released only when IN+ is above IN−', () => {
     const c = new Circuit(), vcc = c.node(), ref = c.node();
     c.add(new VoltageSource(vcc, 0, 5)); c.add(new VoltageSource(ref, 0, 2.5));
