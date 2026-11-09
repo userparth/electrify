@@ -12,6 +12,29 @@ const unwire = (doc: Doc, a: string, b: string) => { doc.wires = doc.wires.filte
 const bat = (doc: Doc, t: '+' | '-') => pin(doc, 'battery', t);
 
 describe('digital', () => {
+  it('adder', () => {
+    expect(playLesson(L('adder'), [
+      d => { nth(d, 'logic-switch', 0).props.on = true; },
+      d => { wire(d, pin(d, 'logic-switch', 'OUT', 0), pin(d, '74hc08', '1')); wire(d, pin(d, 'logic-switch', 'OUT', 1), pin(d, '74hc08', '2')); wire(d, pin(d, '74hc08', '3'), pin(d, 'resistor', '1', 1)); },
+      d => { nth(d, 'logic-switch', 1).props.on = true; },
+    ])).toBe(-1);
+  });
+
+  it('seven-segment decoder', () => {
+    const ps = (d: Doc, t: '+' | '-') => pin(d, 'psu', t);
+    const setCode = (d: Doc, n: number) => [0, 1, 2, 3].forEach(i => { nth(d, 'logic-switch', i).props.on = !!(n & (8 >> i)); });
+    expect(playLesson(L('seven-seg'), [
+      d => { wire(d, pin(d, 'cd4511', '16'), ps(d, '+')); wire(d, pin(d, 'cd4511', '8'), ps(d, '-')); wire(d, pin(d, 'cd4511', '3'), ps(d, '+')); wire(d, pin(d, 'cd4511', '4'), ps(d, '+')); wire(d, pin(d, 'cd4511', '5'), ps(d, '-')); },
+      d => setCode(d, 5),
+      d => setCode(d, 9),
+      d => setCode(d, 12),
+    ])).toBe(-1);
+  });
+
+  it('new digital lessons are not passed by doing nothing', () => {
+    for (const id of ['adder', 'seven-seg']) { const l = L(id); expect(playLesson(l, []), id).toBe(l.steps.findIndex(s => s.check)); }
+  });
+
   it('logic levels', () => {
     expect(playLesson(L('logic-levels'), [
       d => { wire(d, pin(d, 'logic-probe', 'VCC'), bat(d, '+')); wire(d, pin(d, 'logic-probe', 'GND'), bat(d, '-')); },

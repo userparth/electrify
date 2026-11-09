@@ -3,6 +3,10 @@ import type { Check, Module } from '@/features/learn/types';
 
 const out = (c: Check, type: string, pin: number, n = 0) => c.read(type, `o${pin}`, n);
 const freq = (c: Check) => Number(c.read('logic-analyzer', 'freq') ?? 0);
+const ledOn = (c: Check, n: number) => Number(c.read('led', 'glow', n) ?? 0) > 0.2;
+const sw = (c: Check, n: number) => c.prop('logic-switch', 'on', n) === true;
+const lit = (c: Check) => ['a', 'b', 'c', 'd', 'e', 'f', 'g'].filter(k => Number(c.read('seven-segment', k) ?? 0) > 0.15).join('');
+const code = (c: Check) => [0, 1, 2, 3].reduce((acc, i) => acc + (sw(c, i) ? 8 >> i : 0), 0);
 
 export const digital: Module = {
   id: 'digital', title: 'Digital electronics: logic, clocks and counters', level: 'School & college',
@@ -108,6 +112,64 @@ export const digital: Module = {
       quiz: [
         { q: 'Doubling C does what to the frequency?', options: ['doubles it', 'halves it', 'nothing'], answer: 1, why: 'f is proportional to 1/C.' },
         { q: 'Which pins are tied together in astable mode?', options: ['2 and 6', '3 and 7', '1 and 8'], answer: 0, why: 'TRIGGER (2) and THRESHOLD (6) both watch the capacitor voltage.' },
+      ],
+    },
+    {
+      id: 'adder', title: 'Adding in binary: the half adder', minutes: 15,
+      summary: 'Adding two bits gives a sum bit and a carry bit: 0+0 = 00, 0+1 = 01, 1+1 = 10. The sum is XOR of the inputs and the carry is AND. Chain these and you get the 74HC283, which adds whole 4-bit numbers.',
+      goals: ['See XOR make the sum bit', 'Build the carry with AND', 'Add 1 + 1 in binary'],
+      build() {
+        const { doc, part, wire } = builder();
+        const bat = part('battery', 0, 0, { volts: '3' }), xor = part('74hc86', 14, 10), and = part('74hc08', 28, 10);
+        const a = part('logic-switch', 8, 16), b = part('logic-switch', 14, 16);
+        const r1 = part('resistor', 16, 2, { ohms: 100 }), sum = part('led', 22, 2, { color: 'green' });
+        const r2 = part('resistor', 30, 2, { ohms: 100 }), carry = part('led', 36, 2, { color: 'red' });
+        for (const ic of [xor, and]) { wire(bat('+'), ic('14')); wire(bat('-'), ic('7'), 'black'); }
+        for (const s of [a, b]) { wire(s('VCC'), bat('+')); wire(s('GND'), bat('-'), 'black'); }
+        wire(a('OUT'), xor('1'), 'yellow'); wire(b('OUT'), xor('2'), 'yellow');
+        wire(xor('3'), r1('1'), 'blue'); wire(r1('2'), sum('A'), 'blue'); wire(sum('K'), bat('-'), 'black');
+        wire(r2('2'), carry('A'), 'blue'); wire(carry('K'), bat('-'), 'black');
+        return doc;
+      },
+      steps: [
+        { title: '1 + 0 = 1', text: 'Switch A (left) and B feed a 74HC86 XOR gate whose output drives the green SUM LED. Set A HIGH and B LOW: one plus nothing is one, so SUM lights.', check: c => sw(c, 0) && !sw(c, 1) && ledOn(c, 0) },
+        { title: 'Build the carry', text: 'The carry is HIGH only when both bits are 1 — that is an AND gate. Wire switch A → 74HC08 pin 1, switch B → pin 2, and pin 3 → the red CARRY LED’s resistor.', check: c => c.joined(c.pin('logic-switch', 'OUT', 0), c.pin('74hc08', '1')) && c.joined(c.pin('logic-switch', 'OUT', 1), c.pin('74hc08', '2')) && c.joined(c.pin('74hc08', '3'), c.pin('resistor', '1', 1)), hint: 'Shift-drag from a switch OUT pin to start a second wire from it.' },
+        { title: '1 + 1 = 10', text: 'Set both switches HIGH. SUM goes out and CARRY lights: the answer is binary 10, which is two. You just built a half adder.', check: c => sw(c, 0) && sw(c, 1) && !ledOn(c, 0) && ledOn(c, 1) },
+      ],
+      tryIt: [['Set both switches LOW', '0 + 0 = 00: both LEDs off.'], ['Swap the XOR for an OR (74HC32)', '1 + 1 would light SUM as well — wrong! OR is not the same as XOR.']],
+      quiz: [
+        { q: 'Which gate gives the sum bit of a half adder?', options: ['AND', 'OR', 'XOR'], answer: 2, why: 'The sum is 1 when exactly one input is 1 — that is XOR.' },
+        { q: '1 + 1 in binary is…', options: ['2', '10', '11'], answer: 1, why: 'Sum 0, carry 1: “one-zero”, which means two.' },
+        { q: 'A 74HC283 adds 0111 + 0101. The answer is…', options: ['1100', '1010', '0010'], answer: 0, why: '7 + 5 = 12 = 1100 in binary.' },
+      ],
+    },
+    {
+      id: 'seven-seg', title: 'Show a digit: the CD4511 decoder', minutes: 15,
+      summary: 'A 7-segment display needs the right 7 segments for each digit. The CD4511 does that for you: give it a 4-bit BCD number (0–9) and it lights the matching segments of a common-cathode display.',
+      goals: ['Power the decoder and tie its control pins', 'Set a BCD number with switches', 'See what happens above 9'],
+      build() {
+        const { doc, part, wire } = builder();
+        const psu = part('psu', 0, 0, { volts: 5, limit: 0.5 }), ic = part('cd4511', 16, 14), disp = part('seven-segment', 40, 10, { common: 'cathode' });
+        const segs: [string, string, string][] = [['a', '13', '7'], ['b', '12', '6'], ['c', '11', '4'], ['d', '10', '2'], ['e', '9', '1'], ['f', '15', '9'], ['g', '14', '10']];
+        segs.forEach(([, from, to], i) => { const r = part('resistor', 28, i * 2 - 2, { ohms: 220 }); wire(ic(from), r('1'), 'blue'); wire(r('2'), disp(to), 'blue'); });
+        wire(disp('3'), psu('-'), 'black');
+        ['6', '2', '1', '7'].forEach((pin, i) => {
+          const s = part('logic-switch', 6 + i * 5, 20);
+          wire(s('VCC'), psu('+')); wire(s('GND'), psu('-'), 'black'); wire(s('OUT'), ic(pin), 'yellow');
+        });
+        return doc;
+      },
+      steps: [
+        { title: 'Power and tie it up', text: 'The four switches are D C B A (D on the left is worth 8, A is worth 1). Wire VDD (16) to PSU +, VSS (8) to PSU −. Then tie LT̅ (3) and BI̅ (4) to + and LE (5) to −. With all switches LOW the display shows 0.', check: c => c.joined(c.pin('cd4511', '16'), c.pin('psu', '+')) && c.joined(c.pin('cd4511', '8'), c.pin('psu', '-')) && c.joined(c.pin('cd4511', '3'), c.pin('psu', '+')) && c.joined(c.pin('cd4511', '4'), c.pin('psu', '+')) && c.joined(c.pin('cd4511', '5'), c.pin('psu', '-')) && lit(c) === 'abcdef', hint: 'Select the chip to see its pin names; pin 1 is next to the notch.' },
+        { title: 'Show 5', text: 'Five is 0101 in binary: set C and A HIGH, D and B LOW.', check: c => code(c) === 5 && lit(c) === 'acdfg' },
+        { title: 'Show 9', text: 'Nine is 1001: D and A HIGH.', check: c => code(c) === 9 && lit(c) === 'abcfg' },
+        { title: 'Past 9', text: 'BCD only goes to 9. Set 1100 (twelve): the CD4511 blanks the display instead of showing nonsense.', check: c => code(c) === 12 && lit(c) === '' },
+      ],
+      tryIt: [['Set LT̅ (pin 3) LOW', 'every segment lights: the lamp test checks that no segment is dead.'], ['Wire LE (pin 5) HIGH, then change the switches', 'the digit stays frozen: LE latches the number.']],
+      quiz: [
+        { q: 'BCD 0111 is the digit…', options: ['7', '11', '3'], answer: 0, why: '4 + 2 + 1 = 7.' },
+        { q: 'The CD4511 drives which kind of display?', options: ['Common cathode', 'Common anode', 'Either'], answer: 0, why: 'Its outputs go HIGH to light a segment, so the common pin goes to 0 V. (The 74LS47 is for common anode.)' },
+        { q: 'Why one resistor per segment, not one shared?', options: ['The brightness would change with the number of lit segments', 'Shared is fine', 'To save power'], answer: 0, why: 'A shared resistor splits its current between however many segments are on.' },
       ],
     },
     {

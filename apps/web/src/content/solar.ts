@@ -165,6 +165,55 @@ export const solar: Module = {
       ],
     },
     {
+      id: 'monitor', title: 'Monitor the current with a shunt resistor', minutes: 12,
+      summary: 'To measure current without breaking the circuit, put a small known resistor (a shunt) in the − wire and measure the tiny voltage across it: I = V ÷ R. An INA226 board does exactly this with its 0.1 Ω R100 resistor and sends the result to an ESP32 over I2C.',
+      goals: ['Measure the voltage across a shunt', 'Turn millivolts into amps', 'See why shunts must be tiny'],
+      build() {
+        const { doc, part, wire } = builder();
+        const bat = part('battery', 0, 0, { volts: '12' }), fuse = part('fuse', 8, 6, { rating: '10' }), shunt = part('resistor', 8, 12, { ohms: 0.1 });
+        const fan = part('dc-fan', 18, 4); part('dc-fan', 26, 4); part('dmm', 36, -8, { knob: 'V', ac: false });
+        wire(bat('+'), fuse('1')); wire(fuse('2'), fan('+'));
+        wire(bat('-'), shunt('1'), 'black'); wire(shunt('2'), fan('-'), 'black');
+        return doc;
+      },
+      steps: [
+        { title: 'Find the shunt', text: 'The fan’s − wire goes back to the battery through a 0.1 Ω resistor. That is the shunt: every amp of fan current makes 0.1 V across it.', hint: 'Select the resistor to see its value.' },
+        { title: 'Measure across it', text: 'Meter on V DC. Red lead to the shunt end nearer the fan, black (COM) to the end nearer the battery. You should read about 0.08 V — that is 80 mV.', check: c => c.joined(c.pin('dmm', 'VmA'), c.pin('resistor', '2')) && c.joined(c.pin('dmm', 'COM'), c.pin('resistor', '1')) && dcVolts(c, 0.06, 0.11), hint: 'If it reads negative, swap the two leads.' },
+        { title: 'Add a second fan', text: 'Wire the second fan in parallel with the first (+ to +, − to −). Twice the current flows through the shunt, so its voltage doubles: about 0.17 V = 1.7 A.', check: c => c.joined(c.pin('dc-fan', '+', 1), c.pin('dc-fan', '+', 0)) && c.joined(c.pin('dc-fan', '-', 1), c.pin('dc-fan', '-', 0)) && dcVolts(c, 0.14, 0.21) },
+      ],
+      tryIt: [['Change the shunt to 10 Ω', 'the fan barely turns: a big “shunt” steals the voltage the load needs. Shunts are tiny so they cost almost nothing.'], ['Look at the shunt with two fans', '1.7 A × 1.7 A × 0.1 Ω ≈ 0.29 W — more than a ¼ W resistor likes. Real INA226 boards are rated for about 3 A for this reason.']],
+      quiz: [
+        { q: 'The shunt reads 0.12 V and it is 0.1 Ω. The current is…', options: ['0.012 A', '1.2 A', '12 A'], answer: 1, why: 'I = V ÷ R = 0.12 ÷ 0.1 = 1.2 A.' },
+        { q: 'Why is a shunt so small?', options: ['So it barely affects the circuit', 'To make the meter beep', 'To save copper'], answer: 0, why: 'Any voltage it drops is taken away from the load.' },
+        { q: 'How does an ESP32 get the reading from an INA226?', options: ['I2C (SDA and SCL wires)', 'Through the USB cable', 'It measures the shunt with analogRead'], answer: 0, why: 'The INA226 measures the shunt itself and reports amps and volts over I2C.' },
+      ],
+    },
+    {
+      id: 'second-panel', title: 'A second panel: parallel or series?', minutes: 15,
+      summary: 'A PWM controller connects the panel straight to the battery, so the panel works at battery voltage. Two panels in parallel give twice the current; in series they give twice the voltage, which a PWM controller just throws away.',
+      goals: ['Add a panel in parallel', 'See shade on one panel', 'Compare with series wiring'],
+      build() {
+        const { doc, part, wire } = builder();
+        const a = part('solar', 0, 0, { sun: 90 }); part('solar', 17, 0, { sun: 90 });
+        const ctl = part('charge-controller', 36, 16), bat = part('battery', 34, 28, { volts: '12' }), fuse = part('fuse', 26, 28, { rating: '10' });
+        wire(bat('+'), fuse('1')); wire(fuse('2'), ctl('BAT+')); wire(bat('-'), ctl('BAT-'), 'black');
+        wire(a('+'), ctl('PV+')); wire(a('-'), ctl('PV-'), 'black');
+        return doc;
+      },
+      steps: [
+        { title: 'One panel', text: 'Panel A is wired to the controller and charging. Select the controller: ichg is about 2.5 A — almost all of the panel’s 2.83 A.' },
+        { title: 'Add panel B in parallel', text: 'Wire panel B + to PV+ and B − to PV−, next to panel A. The charging current doubles to about 5 A.', check: c => c.joined(c.pin('solar', '+', 1), c.pin('charge-controller', 'PV+')) && c.joined(c.pin('solar', '-', 1), c.pin('charge-controller', 'PV-')) && between(Number(cc(c, 'ichg')), 4.5, 6) },
+        { title: 'Shade panel B', text: 'A tree shades panel B: set its sunlight to 20 %. In parallel each panel adds its own current, so you only lose B’s share — about 3 A is left.', check: c => Number(c.prop('solar', 'sun', 1)) <= 30 && between(Number(cc(c, 'ichg')), 2.5, 4.2) },
+        { title: 'Now try series', text: 'Put B back to 90 %. Rewire in series: A + → PV+, A − → B +, B − → PV−. The panels now make about 49 V, yet the charging current falls back to one panel’s ~2.5 A: a PWM controller pulls the panels down to battery voltage, so the extra volts are wasted.', check: c => Number(c.prop('solar', 'sun', 1)) >= 80 && c.joined(c.pin('solar', '-', 0), c.pin('solar', '+', 1)) && !c.joined(c.pin('solar', '-', 0), c.pin('charge-controller', 'PV-')) && !c.joined(c.pin('solar', '+', 1), c.pin('charge-controller', 'PV+')) && c.joined(c.pin('solar', '-', 1), c.pin('charge-controller', 'PV-')) && c.joined(c.pin('solar', '+', 0), c.pin('charge-controller', 'PV+')) && between(Number(cc(c, 'ichg')), 2, 3.1), hint: 'Delete A’s − wire to PV− and B’s + wire to PV+ first.' },
+      ],
+      tryIt: [['Add a third panel in series', 'about 73 V — over the controller’s 50 V limit. Series strings need an MPPT controller rated for the voltage.'], ['Imagine four panels in parallel', 'about 11 A — more than this 10 A controller can take. Three is the most it can handle.']],
+      quiz: [
+        { q: 'With a PWM controller, two panels in series charge with…', options: ['twice the current', 'about the same current as one panel', 'no current'], answer: 1, why: 'PWM ties the panels to the battery voltage; series only adds volts, which are wasted.' },
+        { q: 'How many 2.83 A panels can go in parallel on a 10 A controller?', options: ['2', '3', '5'], answer: 1, why: '3 × 2.83 = 8.5 A; four would be 11.3 A.' },
+        { q: 'One panel is shaded. Which wiring loses less?', options: ['Parallel', 'Series', 'No difference'], answer: 0, why: 'In parallel the good panel keeps giving its full current.' },
+      ],
+    },
+    {
       id: 'inverter', title: 'An inverter for 230 V loads — and how long it lasts', minutes: 12,
       summary: 'A 300 W inverter turns 12 V DC into 230 V AC. It draws a lot of current, wastes 4–7 W when idle and must be fed straight from the battery through a big fuse.',
       goals: ['Run an AC load', 'Estimate battery current and runtime', 'See an overload trip'],

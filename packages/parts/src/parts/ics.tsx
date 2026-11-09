@@ -98,6 +98,89 @@ class HC14 extends LogicChip {
   protected evaluate(get: (p: number) => Level) { const r: Record<number, Level> = {}; for (const [a, y] of P14) r[y] = b(!get(a)); return r; }
 }
 
+const A283 = [5, 3, 14, 12], B283 = [6, 2, 15, 11], S283 = [4, 1, 13, 10];
+class HC283 extends LogicChip {
+  readonly part = '74HC283'; readonly pinCount = 16; readonly vccPin = 16; readonly gndPin = 8;
+  protected readonly inputs = [...A283, ...B283, 7];
+  protected readonly outputPins = [...S283, 9].map(pin => ({ pin }));
+  protected evaluate(get: (p: number) => Level) {
+    const word = (pins: number[]) => pins.reduce((acc, p, i) => acc + (get(p) << i), 0);
+    const sum = word(A283) + word(B283) + get(7), r: Record<number, Level> = { 9: b(sum > 15) };
+    S283.forEach((pin, i) => r[pin] = b(!!(sum & (1 << i))));
+    return r;
+  }
+}
+
+const D151 = [4, 3, 2, 1, 15, 14, 13, 12];
+class HC151 extends LogicChip {
+  readonly part = '74HC151'; readonly pinCount = 16; readonly vccPin = 16; readonly gndPin = 8;
+  protected readonly inputs = [...D151, 7, 9, 10, 11];
+  protected readonly outputPins = [{ pin: 5 }, { pin: 6 }];
+  protected evaluate(get: (p: number) => Level) {
+    const y = !get(7) && !!get(D151[get(11) + 2 * get(10) + 4 * get(9)]!);
+    return { 5: b(y), 6: b(!y) };
+  }
+}
+
+const SEG4511: Record<number, string> = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg', 5: 'acdfg', 6: 'cdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcfg' };
+const P4511: Record<string, number> = { a: 13, b: 12, c: 11, d: 10, e: 9, f: 15, g: 14 };
+/** BCD to 7-segment latch/decoder with active-HIGH outputs for common-cathode displays; codes above 9 blank. */
+class CD4511 extends LogicChip {
+  readonly part = 'CD4511'; readonly pinCount = 16; readonly vccPin = 16; readonly gndPin = 8;
+  protected readonly inputs = [7, 1, 2, 6, 3, 4, 5];
+  protected readonly outputPins = Object.values(P4511).map(pin => ({ pin }));
+  latched = 0;
+  protected evaluate(get: (p: number) => Level) {
+    if (!get(5)) this.latched = get(7) + 2 * get(1) + 4 * get(2) + 8 * get(6);
+    const on = !get(3) ? 'abcdefg' : !get(4) ? '' : SEG4511[this.latched] ?? '';
+    const r: Record<number, Level> = {};
+    for (const [seg, pin] of Object.entries(P4511)) r[pin] = b(on.includes(seg));
+    return r;
+  }
+  override reset() { super.reset(); this.latched = 0; }
+}
+
+const FF112 = [{ clk: 1, k: 2, j: 3, pre: 4, q: 5, nq: 6, clr: 15 }, { clk: 13, k: 12, j: 11, pre: 10, q: 9, nq: 7, clr: 14 }];
+/** Dual JK flip-flop, falling-edge clocked, active-low preset/clear. */
+class HC112 extends LogicChip {
+  readonly part = '74HC112'; readonly pinCount = 16; readonly vccPin = 16; readonly gndPin = 8;
+  protected readonly inputs = FF112.flatMap(f => [f.clk, f.k, f.j, f.pre, f.clr]);
+  protected readonly outputPins = FF112.flatMap(f => [{ pin: f.q }, { pin: f.nq }]);
+  private state: Level[] = [0, 0];
+  protected evaluate(get: (p: number) => Level, _rose: (p: number) => boolean, fell: (p: number) => boolean) {
+    const r: Record<number, Level> = {};
+    FF112.forEach((f, i) => {
+      if (!get(f.pre) && !get(f.clr)) { r[f.q] = 1; r[f.nq] = 1; return; }
+      if (!get(f.pre)) this.state[i] = 1;
+      else if (!get(f.clr)) this.state[i] = 0;
+      else if (fell(f.clk)) {
+        const j = get(f.j), k = get(f.k);
+        if (j && k) this.state[i] = b(!this.state[i]); else if (j) this.state[i] = 1; else if (k) this.state[i] = 0;
+      }
+      r[f.q] = this.state[i]!; r[f.nq] = b(!this.state[i]);
+    });
+    return r;
+  }
+  override reset() { super.reset(); this.state = [0, 0]; }
+}
+
+/** Synchronous up/down binary counter: rising edge on UP (DOWN held HIGH) counts up, and the other way round. */
+class HC193 extends LogicChip {
+  readonly part = '74HC193'; readonly pinCount = 16; readonly vccPin = 16; readonly gndPin = 8;
+  protected readonly inputs = [15, 1, 10, 9, 4, 5, 11, 14];
+  protected readonly outputPins = [3, 2, 6, 7, 12, 13].map(pin => ({ pin }));
+  count = 0;
+  protected evaluate(get: (p: number) => Level, rose: (p: number) => boolean) {
+    if (get(14)) this.count = 0;
+    else if (!get(11)) this.count = get(15) + 2 * get(1) + 4 * get(10) + 8 * get(9);
+    else if (rose(5) && get(4)) this.count = (this.count + 1) & 15;
+    else if (rose(4) && get(5)) this.count = (this.count + 15) & 15;
+    const c = this.count;
+    return { 3: b(!!(c & 1)), 2: b(!!(c & 2)), 6: b(!!(c & 4)), 7: b(!!(c & 8)), 12: b(!(c === 15 && !get(5))), 13: b(!(c === 0 && !get(4))) };
+  }
+  override reset() { super.reset(); this.count = 0; }
+}
+
 type ChipCtor = new (pins: number[], name?: string) => LogicChip;
 function logicPart(type: string, title: string, name: string, blurb: string, Ctor: ChipCtor, names: string[], use: string, extra: [string, string][] = []): PartDef<{}> {
   const n = names.length, vcc = names.findIndex(x => x === 'VCC' || x === 'VDD') + 1, gnd = names.findIndex(x => x === 'GND' || x === 'VSS') + 1;
@@ -128,6 +211,27 @@ export const hc14 = logicPart('74hc14', '74HC14', '74HC14 Schmitt inverter', '6 
   ['1A', '1Y', '2A', '2Y', '3A', '3Y', 'GND', '4Y', '4A', '5Y', '5A', '6Y', '6A', 'VCC'],
   'Cleans up slow or noisy signals: switches HIGH only above ~70 % and LOW only below ~30 % of VCC.',
   [['Oscillator', 'Resistor from output to input + capacitor from input to GND = square-wave clock (≈ 1/(1.7·R·C) Hz)']]);
+
+export const hc283 = logicPart('74hc283', '74HC283', '74HC283 4-bit adder', 'adds two 4-bit numbers', HC283,
+  ['Σ2', 'B2', 'A2', 'Σ1', 'A1', 'B1', 'C0', 'GND', 'C4', 'Σ4', 'B4', 'A4', 'Σ3', 'A3', 'B3', 'VCC'],
+  'Adds A (A4 A3 A2 A1) + B (B4 B3 B2 B1) + carry-in C0. The answer is on Σ4–Σ1, with carry-out C4 as the 5th bit.',
+  [['Tie', 'C0 (7) to GND when you are not chaining chips'], ['Chain', 'C4 of one chip → C0 of the next for 8 bits']]);
+export const hc151 = logicPart('74hc151', '74HC151', '74HC151 8-to-1 multiplexer', 'picks one of 8 inputs', HC151,
+  ['D3', 'D2', 'D1', 'D0', 'Y', 'W', 'G̅', 'GND', 'C', 'B', 'A', 'D7', 'D6', 'D5', 'D4', 'VCC'],
+  'The binary number on C B A selects which data input D0–D7 is copied to Y. W is the opposite of Y.',
+  [['Enable', 'G̅ (7) to GND, or Y stays LOW'], ['Trick', 'Wire D0–D7 to HIGH/LOW to make any 3-input truth table']]);
+export const cd4511 = logicPart('cd4511', 'CD4511', 'CD4511 BCD to 7-segment', 'drives a common-cathode display', CD4511,
+  ['B', 'C', 'LT̅', 'BI̅', 'LE', 'D', 'A', 'VSS', 'e', 'd', 'c', 'b', 'a', 'g', 'f', 'VDD'],
+  'Shows the BCD number on D C B A (0–9) on a common-cathode display. Codes 10–15 blank the display.',
+  [['Tie', 'LT̅ (3) and BI̅ (4) to + supply, LE (5) to 0 V'], ['Outputs', 'Active HIGH — one ~330 Ω resistor per segment, display COM to 0 V'], ['LE', 'HIGH freezes (latches) the number shown']]);
+export const hc112 = logicPart('74hc112', '74HC112', '74HC112 dual JK flip-flop', '2 × JK flip-flop', HC112,
+  ['1CLK', '1K', '1J', '1PRE̅', '1Q', '1Q̅', '2Q̅', 'GND', '2Q', '2PRE̅', '2J', '2K', '2CLK', '2CLR̅', '1CLR̅', 'VCC'],
+  'On each falling CLK edge: J=1 K=0 sets Q, J=0 K=1 resets it, J=K=1 toggles it, J=K=0 keeps it.',
+  [['PRE̅ / CLR̅', 'Active LOW: tie them to VCC for normal use'], ['Toggle', 'J = K = HIGH turns it into a divide-by-2']]);
+export const hc193 = logicPart('74hc193', '74HC193', '74HC193 up/down counter', 'counts 0–15 up or down', HC193,
+  ['B', 'QB', 'QA', 'DOWN', 'UP', 'QC', 'QD', 'GND', 'D', 'C', 'LOAD̅', 'CO̅', 'BO̅', 'CLR', 'A', 'VCC'],
+  'Pulse UP to count up, DOWN to count down (keep the other one HIGH). The count is on QD QC QB QA.',
+  [['Tie', 'CLR (14) to GND, LOAD̅ (11) to VCC'], ['CO̅ / BO̅', 'Pulse LOW on overflow past 15 / underflow past 0 — chain to the next counter']]);
 
 const smin = (a: number, c: number) => (a + c - Math.sqrt((a - c) ** 2 + 1e-4)) / 2;
 const smax = (a: number, c: number) => (a + c + Math.sqrt((a - c) ** 2 + 1e-4)) / 2;
@@ -441,4 +545,4 @@ export const barGraph: PartDef<{}> = {
   ),
 };
 
-export const icParts: PartDef<any>[] = [cd4017, hc595, hc161, hc14, lm358, lm393, lm7805, ldr, ntc, relay, rgbLed, barGraph];
+export const icParts: PartDef<any>[] = [cd4017, hc595, hc161, hc14, hc283, hc151, cd4511, hc112, hc193, lm358, lm393, lm7805, ldr, ntc, relay, rgbLed, barGraph];

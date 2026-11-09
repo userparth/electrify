@@ -31,6 +31,29 @@ describe('solar module', () => {
     d => { one(d, 'solar').props.sun = 50; },
   ]));
 
+  it('monitor', () => run('monitor', [
+    undefined,
+    d => { wire(d, pin(d, 'dmm', 'VmA'), pin(d, 'resistor', '2')); wire(d, pin(d, 'dmm', 'COM'), pin(d, 'resistor', '1')); },
+    d => { wire(d, pin(d, 'dc-fan', '+', 1), pin(d, 'dc-fan', '+', 0)); wire(d, pin(d, 'dc-fan', '-', 1), pin(d, 'dc-fan', '-', 0)); },
+  ]));
+
+  it('second panel', () => run('second-panel', [
+    undefined,
+    d => { wire(d, pin(d, 'solar', '+', 1), pin(d, 'charge-controller', 'PV+')); wire(d, pin(d, 'solar', '-', 1), pin(d, 'charge-controller', 'PV-')); },
+    d => { one(d, 'solar', 1).props.sun = 20; },
+    d => {
+      one(d, 'solar', 1).props.sun = 90;
+      unwire(d, pin(d, 'solar', '-', 0)); unwire(d, pin(d, 'solar', '+', 1));
+      wire(d, pin(d, 'solar', '-', 0), pin(d, 'solar', '+', 1));
+    },
+  ]));
+
+  it('second panel: a shorted panel does not pass the series step', () => {
+    const solve = [undefined, (d: Doc) => { wire(d, pin(d, 'solar', '+', 1), pin(d, 'charge-controller', 'PV+')); wire(d, pin(d, 'solar', '-', 1), pin(d, 'charge-controller', 'PV-')); }, (d: Doc) => { one(d, 'solar', 1).props.sun = 20; },
+      (d: Doc) => { one(d, 'solar', 1).props.sun = 90; unwire(d, pin(d, 'solar', '-', 0)); wire(d, pin(d, 'solar', '-', 0), pin(d, 'solar', '+', 1)); }];
+    expect(playLesson(L('second-panel'), solve, 0.5)).toBe(3);
+  });
+
   it('controller', () => run('controller', [
     d => { one(d, 'charge-controller').props.lvdOff = false; },
     d => { one(d, 'psu').props.volts = 11.8; },

@@ -35,6 +35,7 @@ class ControllerCore implements Element {
     const v = (k: string) => ctx.prev(this.n[k]!);
     const vb = v('BAT+') - v('BAT-'), vpv = v('PV+') - v('PV-');
     this.vb = vb; this.vpv = vpv;
+    once(this.fired, ctx, 'pv-over', vpv > 50, { kind: 'pv-over', severity: 'error', message: `Charge controller: ${vpv.toFixed(0)} V on PV — above its 50 V input limit. Too many panels in series can destroy it.` });
     once(this.fired, ctx, 'rev', vb < -1, { kind: 'reverse-battery', severity: 'error', message: 'Charge controller: battery connected backwards — its protection diode conducts, the fuse should blow.' });
     const powered = vb > 8 || vpv > 8;
     if (!powered) { this.mode = null; this.chg = false; this.loadOn = false; this.usbOn = false; this.lvdTrip = false; this.flat = false; return; }
@@ -78,6 +79,7 @@ class ControllerCore implements Element {
     this.ichg = this.chg ? (v('BAT-') - v('PV-')) / 0.03 : 0;
     this.iload = this.loadOn ? (v('LOAD-') - v('BAT-')) * 50 : 0;
     this.iusb = this.usbOn ? Math.max(0, -ctx.branch(this.branch0)) : 0;
+    once(this.fired, ctx, 'i-over', this.ichg > 10.5, { kind: 'cc-overcurrent', severity: 'error', message: `Charge controller: ${this.ichg.toFixed(1)} A of charging current — above its 10 A rating. It will overheat.` });
   }
 }
 
@@ -113,6 +115,7 @@ export const chargeController: PartDef<CCProps> = {
     ['LOAD terminals', 'LOAD+ is always battery +; the controller switches LOAD−. A DC-DC IN− must go on LOAD−, not battery −'],
     ['LVD', 'Cuts the load when the battery gets low to protect it. Off = the battery may drain until it is flat'],
     ['Charging', 'Bulk up to 14.4 V, then float at ~13.6 V'],
+    ['Limits', '10 A charging current, 50 V on the PV input'],
   ],
   render: ({ live, props, act }) => {
     const on = live.mode && live.mode !== 'off', fault = live.mode === '24V';

@@ -32,7 +32,7 @@ export function Workbench({ storageKey, initial, dt, side, title }: { storageKey
 
   return (
     <div className="wb">
-      <header className="wb-head"><a href={asset('/')} className="wb-brand"><b>⚡ Electronics Bench</b></a>{title ?? <><a href={asset('/learn/')} className="wb-muted">Lessons</a><a href={asset('/solar/')} className="wb-muted">Solar module</a></>}<Toolbar /><AccountButton /></header>
+      <header className="wb-head"><a href={asset('/')} className="wb-brand"><b>⚡ Electronics Bench</b></a>{title ?? <><a href={asset('/learn/')} className="wb-muted">Lessons</a><a href={asset('/learn/#solar')} className="wb-muted">Solar module</a></>}<Toolbar /><AccountButton /></header>
       <Palette />
       <div className="wb-center">{view3d ? <Scene3D /> : <Canvas />}<CodePanel /></div>
       <aside className="wb-side">

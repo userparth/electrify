@@ -13,7 +13,7 @@ export default function Page() {
       <ul>
         <li>Your Google account ID, email address, name and profile picture URL (the <code>openid email profile</code> scopes). We never see your Google password.</li>
         <li>Your lesson progress: which steps and quiz questions you completed.</li>
-        <li>Classes you create or join. A teacher can see the name, email and lesson progress of students in their class.</li>
+        <li>Classes you create or join, and the lessons a teacher assigns to a class. A teacher can see the name, email and lesson progress of students in their class.</li>
         <li>A session cookie that keeps you signed in for up to 30 days.</li>
       </ul>
       <h2>What we don&apos;t do</h2>
@@ -26,7 +26,7 @@ export default function Page() {
       <h2>Where it is stored</h2>
       <p>On our hosting provider&apos;s server (Hostinger) in a MySQL database, over HTTPS.</p>
       <h2>Deleting your data</h2>
-      <p>Email <a href="mailto:userparth@gmail.com">userparth@gmail.com</a> from the address you signed in with and we will delete your account, progress and classes. You can also remove the app&apos;s access any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
+      <p>Open <Link href="/account">My progress</Link> and use <b>Delete my account</b>: your account, progress, classes and lesson assignments are removed from the server at once. You can also email <a href="mailto:userparth@gmail.com">userparth@gmail.com</a> from the address you signed in with. You can also remove the app&apos;s access any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
       <h2>Children</h2>
       <p>The site is meant for school and college students. Younger students should use it with a teacher or parent; the only personal data kept is what is listed above.</p>
       <h2>Changes</h2>

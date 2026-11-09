@@ -5,6 +5,12 @@ require __DIR__ . '/lib.php';
 $u = eb_require_user();
 $db = eb_db();
 
+function eb_assigned(PDO $db, int $classId): array {
+  $q = $db->prepare('SELECT lesson_id FROM class_lessons WHERE class_id = ? ORDER BY assigned_at, lesson_id');
+  $q->execute([$classId]);
+  return $q->fetchAll(PDO::FETCH_COLUMN);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
   $t = $db->prepare('SELECT id, name, code, created_at FROM classes WHERE teacher_id = ? ORDER BY created_at DESC');
   $t->execute([$u['id']]);
@@ -18,11 +24,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $prog = [];
     foreach ($p as $r) $prog[$r['user_id']][$r['lesson_id']] = ['steps' => (int) $r['steps'], 'done' => (bool) $r['done']];
     foreach ($students as &$st) { $st['progress'] = $prog[$st['id']] ?? new stdClass; unset($st['id']); }
-    $teaching[] = $c + ['students' => $students];
+    unset($st);
+    $id = $c['id']; unset($c['id']);
+    $teaching[] = $c + ['students' => $students, 'assigned' => eb_assigned($db, (int) $id)];
   }
-  $e = $db->prepare('SELECT c.name, c.code, t.name AS teacher FROM enrollments e JOIN classes c ON c.id = e.class_id JOIN users t ON t.id = c.teacher_id WHERE e.user_id = ?');
+  $e = $db->prepare('SELECT c.id, c.name, c.code, t.name AS teacher FROM enrollments e JOIN classes c ON c.id = e.class_id JOIN users t ON t.id = c.teacher_id WHERE e.user_id = ?');
   $e->execute([$u['id']]);
-  eb_json(['teaching' => $teaching, 'enrolled' => $e->fetchAll()]);
+  $enrolled = [];
+  foreach ($e as $c) { $id = $c['id']; unset($c['id']); $enrolled[] = $c + ['assigned' => eb_assigned($db, (int) $id)]; }
+  eb_json(['teaching' => $teaching, 'enrolled' => $enrolled]);
 }
 
 $b = eb_require_post();
@@ -50,6 +60,22 @@ if ($action === 'join') {
   if (!$c) eb_json(['error' => 'No class with that code.'], 404);
   $db->prepare('INSERT IGNORE INTO enrollments (class_id, user_id) VALUES (?, ?)')->execute([$c['id'], $u['id']]);
   eb_json(['ok' => true, 'name' => $c['name']]);
+}
+
+if ($action === 'assign') {
+  $q = $db->prepare('SELECT id FROM classes WHERE code = ? AND teacher_id = ?');
+  $q->execute([(string) ($b['code'] ?? ''), $u['id']]);
+  $classId = $q->fetchColumn();
+  if (!$classId) eb_json(['error' => 'No such class.'], 404);
+  $ids = array_values(array_unique(array_filter((array) ($b['lessons'] ?? []), fn($x) => is_string($x) && preg_match('/^[a-z0-9-]{1,64}$/', $x))));
+  if (count($ids) > 300) eb_json(['error' => 'Too many lessons.'], 400);
+  $db->beginTransaction();
+  $keep = $ids ? implode(',', array_fill(0, count($ids), '?')) : "''";
+  $db->prepare("DELETE FROM class_lessons WHERE class_id = ? AND lesson_id NOT IN ($keep)")->execute([$classId, ...$ids]);
+  $ins = $db->prepare('INSERT IGNORE INTO class_lessons (class_id, lesson_id) VALUES (?, ?)');
+  foreach ($ids as $id) $ins->execute([$classId, $id]);
+  $db->commit();
+  eb_json(['ok' => true, 'assigned' => eb_assigned($db, (int) $classId)]);
 }
 
 if ($action === 'delete') {

@@ -113,3 +113,11 @@ kbd{border:1.2px solid currentColor;border-radius:4px;padding:0 4px;font-size:10
 .legal{max-width:720px}
 .legal h2{font-size:17px;margin:20px 0 6px}
 .legal li,.legal p{font-size:14px;line-height:1.55}
+.acct-assign{margin:6px 0 10px}
+.acct-assign summary{cursor:pointer;font-weight:700;font-size:13px}
+.acct-assign fieldset{border:1.2px solid var(--ink);border-radius:10px;margin:8px 0;padding:6px 10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:2px 12px}
+.acct-assign legend{font-size:12px;font-weight:700;padding:0 4px}
+.acct-assign label{font-size:12.5px}
+.acct-grid th.asg{background:#f3e3a8}
+.acct-danger{border-color:#d6452f}
+.btn.danger{background:#d6452f;color:#fff}

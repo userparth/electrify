@@ -5,7 +5,8 @@ import { loadProgress, type LessonProgress } from '../learn/check';
 
 export interface User { id: number; email: string; name: string; picture: string; role: 'student' | 'teacher' }
 export interface StudentRow { name: string; email: string; picture: string; progress: Record<string, { steps: number; done: boolean }> }
-export interface TeachingClass { name: string; code: string; created_at: string; students: StudentRow[] }
+export interface TeachingClass { name: string; code: string; created_at: string; students: StudentRow[]; assigned: string[] }
+export interface EnrolledClass { name: string; code: string; teacher: string; assigned: string[] }
 
 const api = (file: string) => asset(`/api/${file}`);
 
@@ -26,6 +27,8 @@ interface AccountState {
   refresh(): Promise<void>;
   signIn(): void;
   signOut(): Promise<void>;
+  /** Permanently removes the account, its progress and its classes on the server. */
+  deleteAccount(): Promise<void>;
 }
 
 export const useAccount = create<AccountState>((set, get) => ({
@@ -39,6 +42,7 @@ export const useAccount = create<AccountState>((set, get) => ({
   },
   signIn() { location.href = `${api('auth.php')}?action=start&return=${encodeURIComponent(location.pathname + location.search)}`; },
   async signOut() { await call('auth.php?action=logout', {}); set({ user: null }); },
+  async deleteAccount() { await call('account.php', { action: 'delete' }); set({ user: null }); },
 }));
 
 /** Pushes local progress up, pulls the merged result down. */
@@ -64,7 +68,8 @@ export function queueSync() {
 }
 
 export const classesApi = {
-  list: () => call<{ teaching: TeachingClass[]; enrolled: { name: string; code: string; teacher: string }[] }>('classes.php'),
+  list: () => call<{ teaching: TeachingClass[]; enrolled: EnrolledClass[] }>('classes.php'),
+  assign: (code: string, lessons: string[]) => call<{ ok: true; assigned: string[] }>('classes.php', { action: 'assign', code, lessons }),
   create: (name: string) => call<{ ok: true; code: string }>('classes.php', { action: 'create', name }),
   join: (code: string) => call<{ ok: true; name: string }>('classes.php', { action: 'join', code }),
   remove: (code: string) => call<{ ok: true }>('classes.php', { action: 'delete', code }),

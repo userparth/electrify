@@ -77,10 +77,10 @@ electronics-bench/
 | 1 | Engine core ✅ (first cut) | MNA DC + transient, diode/LED/BJT/MOSFET/solar, 74xx + 555, PSU + function generator; 20 tests | large |
 | 2 | Workbench UI ✅ (first cut) | Breadboard, 37 parts, wiring, palette, inspector, undo/redo, autosave, 4 examples | large |
 | 3 | Instruments ✅ (first cut) | Multimeter, function generator, 2-ch scope, 8-ch logic analyzer, logic probe (bench PSU from phase 2); leads are wires whose ends can be dragged between pins | medium |
-| 4 | Digital parts | Gates, 74xx set, 7-segment, 555 | medium |
+| 4 | Digital parts ✅ | Gates, 74xx set, 7-segment, 555 · 74HC283 adder, 74HC151 mux, CD4511 decoder, 74HC112 JK, 74HC193 up/down · half-adder and 7-segment decoder lessons | medium |
 | 5 | Arduino + Raspberry Pi ✅ (first cut) | Arduino Uno (avr8js, `/api/compile` via arduino-cli, code panel, Serial monitor) · Pi 4 GPIO (Pyodide worker, gpiozero + RPi.GPIO shims) · Pi Pico (rp2040js + MicroPython v1.29, bootrom B1; ~40–65% real time) · I2C/SPI/UART to parts later | large |
-| 6 | Platform | Auth, schools, licences, classes, progress, server-only content | large |
-| 7 | Content | Five modules above, solar ported | large |
+| 6 | Platform ✅ | Google sign-in, MySQL progress sync, classes with join codes, lesson assignments, teacher grid, self-serve account deletion (no licences: open source) | large |
+| 7 | Content ✅ | Five modules; solar ported as 10 lessons (Fig. 08 shunt monitoring, Fig. 09 second panel added); old `/solar` figures kept as a linked prototype | large |
 | 8 | Speed + deploy (in progress) | ✅ Simulation in a Web Worker (UI never blocks) · ✅ Pico USB IRQ storm fixed (sleeping MicroPython ~20× faster, Pico at real time) · ✅ op-amp convergence fix · ✅ hosting + compile rate limit. Rust/WASM only if a circuit needs it (solver is 6–150× real time today) | medium |
 
 ## Needs your input later

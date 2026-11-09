@@ -1,6 +1,6 @@
 import { Capacitor, Circuit, FunctionGenerator, Resistor, Simulator, VoltageSource } from '@eb/engine';
 import { describe, expect, it } from 'vitest';
-import { cd4017, hc14, hc595, icParts, ldr, lm358, lm393, lm7805, relay } from '../src/parts/ics';
+import { cd4017, cd4511, hc112, hc14, hc151, hc193, hc283, hc595, icParts, ldr, lm358, lm393, lm7805, relay } from '../src/parts/ics';
 import type { PartDef, Props, Runtime } from '../src/types';
 
 function mount<P extends Props>(c: Circuit, def: PartDef<P>, nodes: Record<string, number>, props: Partial<P> = {}): { rt: Runtime; pin: (id: string) => number } {
@@ -141,5 +141,77 @@ describe('IC and sensor parts', () => {
     expect(s.v(pin('NC'))).toBeGreaterThan(11.5); expect(s.v(pin('NO'))).toBeLessThan(0.1);
     drive.volts = 5; s.op();
     expect(s.v(pin('NO'))).toBeGreaterThan(11.5); expect(s.v(pin('NC'))).toBeLessThan(0.1);
+  });
+});
+
+describe('more logic chips', () => {
+  // Every input pin is driven by its own source so a test can set levels and step the clock.
+  function rig(def: PartDef<{}>, inputs: string[], vccPin: string, gndPin: string) {
+    const c = new Circuit(), vcc = c.node();
+    c.add(new VoltageSource(vcc, 0, 5));
+    const src: Record<string, VoltageSource> = {}, nodes: Record<string, number> = { [vccPin]: vcc, [gndPin]: 0 };
+    for (const p of inputs) { const n = c.node(); src[p] = c.add(new VoltageSource(n, 0, 0)); nodes[p] = n; }
+    const { pin } = mount(c, def, nodes);
+    const s = new Simulator(c, { dt: 1e-5 }); s.op();
+    const set = (lv: Record<string, 0 | 1>) => { for (const [p, v] of Object.entries(lv)) src[p]!.volts = v * 5; s.step(3); };
+    const hi = (p: string) => s.v(pin(p)) > 2.5;
+    return { set, hi };
+  }
+
+  it('74HC283 adds two 4-bit numbers with carry', () => {
+    const A = ['5', '3', '14', '12'], B = ['6', '2', '15', '11'], S = ['4', '1', '13', '10'];
+    const { set, hi } = rig(hc283, [...A, ...B, '7'], '16', '8');
+    for (const [a, bb, cin] of [[5, 3, 0], [9, 9, 1], [15, 1, 0], [0, 0, 0]] as const) {
+      const lv: Record<string, 0 | 1> = { '7': cin };
+      A.forEach((p, i) => lv[p] = ((a >> i) & 1) as 0 | 1); B.forEach((p, i) => lv[p] = ((bb >> i) & 1) as 0 | 1);
+      set(lv);
+      const sum = S.reduce((acc, p, i) => acc + (hi(p) ? 1 << i : 0), 0) + (hi('9') ? 16 : 0);
+      expect(sum, `${a}+${bb}+${cin}`).toBe(a + bb + cin);
+    }
+  });
+
+  it('74HC151 routes the selected input to Y', () => {
+    const D = ['4', '3', '2', '1', '15', '14', '13', '12'];
+    const { set, hi } = rig(hc151, [...D, '7', '9', '10', '11'], '16', '8');
+    const base: Record<string, 0 | 1> = { '7': 0 }; D.forEach((p, i) => base[p] = (i === 5 ? 1 : 0));
+    set({ ...base, '11': 1, '10': 0, '9': 1 });
+    expect(hi('5')).toBe(true); expect(hi('6')).toBe(false);
+    set({ '11': 0 });
+    expect(hi('5')).toBe(false);
+    set({ '11': 1, '7': 1 });
+    expect(hi('5')).toBe(false);
+  });
+
+  it('CD4511 lights the right segments and blanks above 9', () => {
+    const { set, hi } = rig(cd4511, ['7', '1', '2', '6', '3', '4', '5'], '16', '8');
+    const seg = { a: '13', b: '12', c: '11', d: '10', e: '9', f: '15', g: '14' };
+    const lit = () => Object.entries(seg).filter(([, p]) => hi(p)).map(([k]) => k).join('');
+    const code = (n: number) => ({ '7': (n & 1) as 0 | 1, '1': ((n >> 1) & 1) as 0 | 1, '2': ((n >> 2) & 1) as 0 | 1, '6': ((n >> 3) & 1) as 0 | 1 });
+    set({ '3': 1, '4': 1, '5': 0, ...code(5) }); expect(lit()).toBe('acdfg');
+    set(code(8)); expect(lit()).toBe('abcdefg');
+    set(code(12)); expect(lit()).toBe('');
+    set(code(1)); set({ '5': 1 }); set(code(7)); expect(lit()).toBe('bc');
+    set({ '3': 0 }); expect(lit()).toBe('abcdefg');
+  });
+
+  it('74HC112 sets, resets and toggles on the falling edge', () => {
+    const { set, hi } = rig(hc112, ['1', '2', '3', '4', '15'], '16', '8');
+    const clock = () => { set({ '1': 1 }); set({ '1': 0 }); };
+    set({ '4': 1, '15': 1, '3': 1, '2': 0, '1': 0 }); clock(); expect(hi('5')).toBe(true);
+    set({ '3': 0, '2': 1 }); set({ '1': 1 }); expect(hi('5')).toBe(true); set({ '1': 0 }); expect(hi('5')).toBe(false);
+    set({ '3': 1, '2': 1 }); clock(); expect(hi('5')).toBe(true); clock(); expect(hi('5')).toBe(false);
+    set({ '15': 0 }); expect(hi('5')).toBe(false); expect(hi('6')).toBe(true);
+  });
+
+  it('74HC193 counts up and down with borrow', () => {
+    const { set, hi } = rig(hc193, ['5', '4', '11', '14', '15', '1', '10', '9'], '16', '8');
+    const q = () => (hi('3') ? 1 : 0) + (hi('2') ? 2 : 0) + (hi('6') ? 4 : 0) + (hi('7') ? 8 : 0);
+    set({ '5': 1, '4': 1, '11': 1, '14': 1 }); set({ '14': 0 });
+    for (let i = 0; i < 3; i++) { set({ '5': 0 }); set({ '5': 1 }); }
+    expect(q()).toBe(3);
+    for (let i = 0; i < 4; i++) { set({ '4': 0 }); set({ '4': 1 }); }
+    expect(q()).toBe(15);
+    set({ '15': 0, '1': 1, '10': 0, '9': 0, '11': 0 }); set({ '11': 1 }); expect(q()).toBe(2);
+    set({ '4': 0 }); set({ '4': 1 }); set({ '4': 0 }); set({ '4': 1 }); set({ '4': 0 }); expect(q()).toBe(0); expect(hi('13')).toBe(false);
   });
 });
