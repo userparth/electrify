@@ -2,7 +2,7 @@
 import { GRID, getPart, resistorBands, type Live, type PartDef, type Props } from '@eb/parts';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { placedPins, type Inst, type PlacedPin } from '../model';
-import { useBench } from '../store';
+import { runner, useBench } from '../store';
 
 const INK = '#1d1d1b', S = GRID, K = S * Math.sqrt(1.5);
 const ISO = { th: Math.PI / 4, ph: Math.atan(1 / Math.SQRT2) };
@@ -40,6 +40,11 @@ const viewXY = (cam: Cam, x: number, y: number): [number, number] => {
   const dx = x - cam.cx, dy = y - cam.cy;
   return [dx * cam.cos - dy * cam.sin, dx * cam.sin + dy * cam.cos];
 };
+/** Screen px (scene space, before pan/zoom) back to the world point on the horizontal plane at height z. */
+function unproject(cam: Cam, sx: number, sy: number, z: number): [number, number] {
+  const u = sx / K, v = (sy / K + z * cam.cp) / cam.sp;
+  return [cam.cx + u * cam.cos + v * cam.sin, cam.cy - u * cam.sin + v * cam.cos];
+}
 function project(cam: Cam, x: number, y: number, z: number): [number, number] {
   const [u, v] = viewXY(cam, x, y);
   return [u * K, (v * cam.sp - z * cam.cp) * K];
@@ -247,7 +252,7 @@ function Upright({ cam, inst, def, props, base, lid }: { cam: Cam; inst: Inst; d
 
 interface Placed { inst: Inst; def: PartDef; props: Props; base: number; h: number; depth: number; onBoard: boolean }
 
-const IsoPart = memo(function IsoPart({ cam, p, live, selected, wobble }: { cam: Cam; p: Placed; live: Live | undefined; selected: boolean; wobble: boolean }) {
+const IsoPart = memo(function IsoPart({ cam, p, live, selected, wobble, holes }: { cam: Cam; p: Placed; live: Live | undefined; selected: boolean; wobble: boolean; holes?: ReactNode }) {
   const { inst, def, props, base, h } = p, lv = live ?? NO_LIVE;
   const act = useCallback((patch: Props) => useBench.getState().setProps(inst.id, patch, true), [inst.id]);
   // The lid drawing only changes with the part's state, so orbiting reuses it and React skips the subtree.
@@ -267,11 +272,22 @@ const IsoPart = memo(function IsoPart({ cam, p, live, selected, wobble }: { cam:
     body = <g>{legs}<Extrude cam={cam} inst={inst} def={def} props={props} base={base + 0.35} h={h} top={lid} box={{ x: -0.5, y: -2.55, w: n / 2, h: 2.1 }} /></g>;
   } else body = <Extrude cam={cam} inst={inst} def={def} props={props} base={base} h={h} top={lid} />;
   return (
-    <g data-part={inst.id} style={{ cursor: 'pointer' }} filter={wobble ? 'url(#iso-wobble)' : undefined}>
-      {body}
-    </g>
+    <>
+      <g data-part={inst.id} style={{ cursor: 'pointer' }} filter={wobble ? 'url(#iso-wobble)' : undefined}>
+        {selected && inst.type !== 'breadboard' && <Outline cam={cam} p={p} />}
+        {body}
+      </g>
+      {holes}
+    </>
   );
 });
+
+/** Dashed footprint ring under the selected part. */
+function Outline({ cam, p }: { cam: Cam; p: Placed }) {
+  const f = footprint(p.def, p.inst, p.props), cx = f.reduce((a, q) => a + q[0], 0) / 4, cy = f.reduce((a, q) => a + q[1], 0) / 4;
+  const g = f.map(([x, y]) => project(cam, cx + (x - cx) * 1.08 + Math.sign(x - cx) * 0.4, cy + (y - cy) * 1.08 + Math.sign(y - cy) * 0.4, p.base));
+  return <polygon points={pts(g)} fill="#3a6ed6" fillOpacity={0.08} stroke="#3a6ed6" strokeWidth={1.8} strokeDasharray="6 4" pointerEvents="none" />;
+}
 
 function wirePath(cam: Cam, a: V3, b: V3) {
   const d = Math.hypot(a[0] - b[0], a[1] - b[1]), lift = Math.min(9, 1.2 + d * 0.22), top = Math.max(a[2], b[2]) + lift, n = 24, out: V3[] = [];
@@ -312,12 +328,41 @@ function Mat({ cam, x0, y0, x1, y1 }: { cam: Cam; x0: number; y0: number; x1: nu
   return <g>{faces}<polygon points={pts(top)} fill="#8fc4b0" stroke={INK} strokeWidth={1.4} />{lines}</g>;
 }
 
-type Drag = { x: number; y: number; mode: 'orbit' | 'pan'; th: number; ph: number; vx: number; vy: number; moved: boolean; pick: Element | null };
+/** Invisible hit targets on every pin and breadboard hole; part pins are drawn last so they win over holes. */
+const PinLayer = memo(function PinLayer({ cam, pins, pinPos, holes }: { cam: Cam; pins: PlacedPin[]; pinPos: (p: PlacedPin) => V3; holes: boolean }) {
+  return <g>{pins.filter(p => (p.inst.type === 'breadboard') === holes).map(p => { const [x, y] = project(cam, ...pinPos(p)); return <circle key={p.key} data-pin={p.key} cx={x} cy={y} r={p.inst.type === 'breadboard' ? 4 : 5.5} fill="transparent" />; })}</g>;
+});
+
+function PinHover({ cam, hover, from, rubber, pins, pinAt, pinPos }: { cam: Cam; hover: string | null; from: string | null; rubber: [number, number] | null; pins: PlacedPin[]; pinAt: Map<string, PlacedPin>; pinPos: (p: PlacedPin) => V3 }) {
+  const volts = useBench(s => s.volts), net = runner.net, h = hover ? pinAt.get(hover) : undefined, f = from ? pinAt.get(from) : undefined;
+  const hn = h && net.get(h.key), same = hn ? pins.filter(p => net.get(p.key) === hn) : h ? [h] : [];
+  const at = (p: PlacedPin) => project(cam, ...pinPos(p));
+  const fp = f && at(f), hp = h && at(h), end = hp ?? rubber;
+  const v = h ? volts[h.key] : undefined, vText = v != null ? `${v.toFixed(v < 10 ? 3 : 2)} V` : 'not connected';
+  return (
+    <g pointerEvents="none">
+      {same.map(p => { const [x, y] = at(p); return <circle key={p.key} cx={x} cy={y} r={3.2} fill="#3a6ed6" fillOpacity={0.45} />; })}
+      {fp && end && <path d={`M${fp[0]},${fp[1]} Q${(fp[0] + end[0]) / 2},${Math.min(fp[1], end[1]) - 40} ${end[0]},${end[1]}`} fill="none" stroke="#3a6ed6" strokeWidth={3} strokeDasharray="6 5" strokeLinecap="round" />}
+      {hp && <circle cx={hp[0]} cy={hp[1]} r={6.5} fill="none" stroke="#3a6ed6" strokeWidth={2.2} />}
+      {hp && h && (
+        <g transform={`translate(${hp[0] + 10},${hp[1] - 28})`} fontFamily="ui-monospace,Menlo,monospace">
+          <rect width={Math.max(h.pin.label.length, vText.length) * 5.6 + 16} height={30} rx={8} fill="#fbf8f1" stroke={INK} strokeWidth={1.2} />
+          <text x={8} y={12} fontSize={8.5} fontWeight={700} fill={INK}>{h.pin.label}</text>
+          <text x={8} y={24} fontSize={8.5} fill="#4b4840">{vText}</text>
+        </g>
+      )}
+    </g>
+  );
+}
+
+type Drag = { x: number; y: number; mode: 'orbit' | 'pan' | 'part' | 'wire'; th: number; ph: number; vx: number; vy: number; moved: boolean; pick: Element | null; part?: { id: string; board: boolean; off0: [number, number]; offB: [number, number] }; from?: string };
 
 export default function IsoView() {
   const doc = useBench(s => s.doc), live = useBench(s => s.live), sel = useBench(s => s.sel);
   const [angle, setAngle] = useState(ISO), [labels, setLabels] = useState(true), [wobble, setWobble] = useState(1.2), [moving, setMoving] = useState(false);
   const [view, setView] = useState({ x: 0, y: 0, zoom: 1 });
+  const [center, setCenter] = useState<[number, number] | null>(null);
+  const [hover, setHover] = useState<string | null>(null), [rubber, setRubber] = useState<[number, number] | null>(null);
   const host = useRef<HTMLDivElement>(null), drag = useRef<Drag | null>(null);
 
   const scene = useMemo(() => {
@@ -334,7 +379,9 @@ export default function IsoView() {
     const x0 = xs.length ? Math.min(...xs) - 6 : -20, x1 = xs.length ? Math.max(...xs) + 6 : 20, y0 = ys.length ? Math.min(...ys) - 6 : -20, y1 = ys.length ? Math.max(...ys) + 6 : 20;
     return { pins, holes, placed, bounds: { x0, y0, x1, y1 } };
   }, [doc.parts]);
-  const cam = useMemo(() => makeCam((scene.bounds.x0 + scene.bounds.x1) / 2, (scene.bounds.y0 + scene.bounds.y1) / 2, angle.th, angle.ph), [scene.bounds, angle]);
+  const mid: [number, number] = [(scene.bounds.x0 + scene.bounds.x1) / 2, (scene.bounds.y0 + scene.bounds.y1) / 2];
+  // The orbit centre only moves when the view is re-fitted, so editing never makes the scene jump.
+  const cam = useMemo(() => makeCam(center?.[0] ?? mid[0], center?.[1] ?? mid[1], angle.th, angle.ph), [center, mid[0], mid[1], angle]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ordered = useMemo(() => scene.placed.map(p => {
     const fp = footprint(p.def, p.inst, p.props).map(([x, y]) => viewXY(cam, x, y)[1]);
@@ -344,13 +391,19 @@ export default function IsoView() {
   const fit = useCallback(() => {
     const el = host.current, b = scene.bounds;
     if (!el) return;
+    const cam = makeCam((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, angle.th, angle.ph);
+    setCenter([cam.cx, cam.cy]);
     const corners = [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]].flatMap(([x, y]) => [project(cam, x!, y!, 0), project(cam, x!, y!, 9)]);
     const sx = corners.map(c => c[0]), sy = corners.map(c => c[1]), w = Math.max(...sx) - Math.min(...sx), h = Math.max(...sy) - Math.min(...sy);
     const zoom = Math.min(2.5, Math.max(0.2, Math.min(el.clientWidth / w, el.clientHeight / h) * 0.92));
     setView({ zoom, x: el.clientWidth / 2 - (Math.min(...sx) + w / 2) * zoom, y: el.clientHeight / 2 - (Math.min(...sy) + h / 2) * zoom });
-  }, [scene.bounds, cam]);
-  const partsKey = doc.parts.map(p => p.id).join();
-  useEffect(() => { fit(); }, [partsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [scene.bounds, angle]);
+  const ids = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const now = new Set(doc.parts.map(p => p.id)), fresh = !ids.current.size || ![...now].some(id => ids.current.has(id));
+    ids.current = now;
+    if (fresh) fit();
+  }, [doc.parts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pinPos = useMemo(() => {
     const byId = new Map(scene.placed.map(p => [p.inst.id, p]));
@@ -365,45 +418,127 @@ export default function IsoView() {
     };
   }, [scene]);
   const pinAt = useMemo(() => new Map(scene.pins.map(p => [p.key, p])), [scene.pins]);
+  const holeLayers = useMemo(() => new Map(scene.placed.filter(p => p.inst.type === 'breadboard').map(p => [p.inst.id, <PinLayer key="h" cam={cam} pins={scene.pins.filter(q => q.inst === p.inst)} pinPos={pinPos} holes />])), [scene, cam, pinPos]);
+
+  const zoomAt = useCallback((cx: number, cy: number, to: (z: number) => number) => {
+    const r = host.current!.getBoundingClientRect(), mx = cx - r.left, my = cy - r.top;
+    setView(v => { const zoom = Math.min(5, Math.max(0.15, to(v.zoom))), k = zoom / v.zoom; return { zoom, x: mx - (mx - v.x) * k, y: my - (my - v.y) * k }; });
+  }, []);
 
   useEffect(() => {
     const el = host.current;
     if (!el) return;
+    // Trackpad: pinch arrives as ctrl+wheel and two-finger moves as plain wheel; a mouse wheel moves in whole notches.
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
-      const r = el.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top, f = Math.exp(-e.deltaY * 0.0015);
-      setView(v => { const zoom = Math.min(5, Math.max(0.15, v.zoom * f)), k = zoom / v.zoom; return { zoom, x: mx - (mx - v.x) * k, y: my - (my - v.y) * k }; });
+      const notch = e.deltaMode === 1 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 50 && Math.abs((e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY ?? 0) % 120 === 0);
+      if (e.ctrlKey) zoomAt(e.clientX, e.clientY, z => z * Math.exp(-e.deltaY * 0.01));
+      else if (notch) zoomAt(e.clientX, e.clientY, z => z * Math.exp(-e.deltaY * 0.0015));
+      else setView(v => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     };
+    // Safari reports trackpad pinch as gesture events instead of ctrl+wheel.
+    let base = 1;
+    const gStart = (e: Event) => { e.preventDefault(); base = 1; };
+    const gChange = (e: Event) => { e.preventDefault(); const g = e as Event & { scale: number; clientX: number; clientY: number }, f = g.scale / base; base = g.scale; zoomAt(g.clientX, g.clientY, z => z * f); };
     el.addEventListener('wheel', wheel, { passive: false });
-    return () => el.removeEventListener('wheel', wheel);
-  }, []);
+    el.addEventListener('gesturestart', gStart);
+    el.addEventListener('gesturechange', gChange);
+    return () => { el.removeEventListener('wheel', wheel); el.removeEventListener('gesturestart', gStart); el.removeEventListener('gesturechange', gChange); };
+  }, [zoomAt]);
+
+  // Touch screens: two fingers pinch to zoom and move together to pan.
+  const touches = useRef(new Map<number, [number, number]>()), pinch = useRef<{ d: number; mx: number; my: number } | null>(null);
+  const pinchState = () => {
+    const [a, b] = [...touches.current.values()];
+    return { d: Math.hypot(a![0] - b![0], a![1] - b![1]) || 1, mx: (a![0] + b![0]) / 2, my: (a![1] + b![1]) / 2 };
+  };
+
+  const scenePt = (e: { clientX: number; clientY: number }): [number, number] => {
+    const r = host.current!.getBoundingClientRect();
+    return [(e.clientX - r.left - view.x) / view.zoom, (e.clientY - r.top - view.y) / view.zoom];
+  };
+  const boards = useMemo(() => scene.placed.filter(p => p.inst.type === 'breadboard').map(p => { const f = footprint(p.def, p.inst, p.props); return [Math.min(...f.map(q => q[0])), Math.min(...f.map(q => q[1])), Math.max(...f.map(q => q[0])), Math.max(...f.map(q => q[1]))]; }), [scene.placed]);
+  /** Where the pointer lands: the breadboard top if it is over one (and the part can sit in holes), else the mat. */
+  const ground = (e: { clientX: number; clientY: number }, boardOk = true): { x: number; y: number; z: number } => {
+    const [sx, sy] = scenePt(e);
+    if (boardOk) { const [x, y] = unproject(cam, sx, sy, BB_H); if (boards.some(([a, b, c, d]) => x >= a! && x <= c! && y >= b! && y <= d!)) return { x, y, z: BB_H }; }
+    const [x, y] = unproject(cam, sx, sy, 0);
+    return { x, y, z: 0 };
+  };
+  const pinUnder = (e: { clientX: number; clientY: number }) => document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-pin]')?.getAttribute('data-pin') ?? null;
 
   const down = (e: React.PointerEvent) => {
-    if ((e.target as Element).closest('[data-interactive], .iso-tools')) return;
-    const pan = e.button === 2 || e.shiftKey || e.button === 1;
-    drag.current = { x: e.clientX, y: e.clientY, mode: pan ? 'pan' : 'orbit', th: angle.th, ph: angle.ph, vx: view.x, vy: view.y, moved: false, pick: (e.target as Element).closest('[data-part], [data-wire]') };
+    const t = e.target as Element;
+    if (t.closest('[data-interactive], .iso-tools')) return;
+    if (e.pointerType === 'touch') {
+      touches.current.set(e.pointerId, [e.clientX, e.clientY]);
+      if (touches.current.size === 2) { drag.current = null; setMoving(true); setRubber(null); pinch.current = pinchState(); (e.currentTarget as Element).setPointerCapture(e.pointerId); return; }
+    }
+    const pan = e.button === 2 || e.shiftKey || e.button === 1, pin = t.closest('[data-pin]')?.getAttribute('data-pin'), partEl = t.closest('[data-part]');
+    const d: Drag = { x: e.clientX, y: e.clientY, mode: pan ? 'pan' : 'orbit', th: angle.th, ph: angle.ph, vx: view.x, vy: view.y, moved: false, pick: t.closest('[data-part], [data-wire]') };
+    if (!pan && pin) { d.mode = 'wire'; d.from = pin; }
+    else if (!pan && partEl) {
+      const id = partEl.getAttribute('data-part')!, p = scene.placed.find(q => q.inst.id === id);
+      if (p && p.inst.type !== 'breadboard') {
+        const [sx, sy] = scenePt(e), g0 = unproject(cam, sx, sy, 0), gB = unproject(cam, sx, sy, BB_H);
+        d.mode = 'part'; d.part = { id, board: (p.def.mount ?? 'board') === 'board', off0: [p.inst.x - g0[0], p.inst.y - g0[1]], offB: [p.inst.x - gB[0], p.inst.y - gB[1]] };
+      }
+    }
+    drag.current = d;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
   const move = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch' && touches.current.has(e.pointerId)) touches.current.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pinch.current && touches.current.size === 2) {
+      const p0 = pinch.current, p1 = pinchState();
+      zoomAt(p1.mx, p1.my, z => z * p1.d / p0.d);
+      setView(v => ({ ...v, x: v.x + p1.mx - p0.mx, y: v.y + p1.my - p0.my }));
+      pinch.current = p1;
+      return;
+    }
     const d = drag.current;
-    if (!d) return;
+    if (d && e.buttons === 0) { up(e); return; }
+    if (!d) { setHover(pinUnder(e)); return; }
     const dx = e.clientX - d.x, dy = e.clientY - d.y;
-    if (!d.moved && Math.abs(dx) + Math.abs(dy) > 4) { d.moved = true; setMoving(true); }
+    if (!d.moved && Math.abs(dx) + Math.abs(dy) > 4) { d.moved = true; setMoving(d.mode === 'orbit' || d.mode === 'pan'); }
     if (!d.moved) return;
     if (d.mode === 'pan') setView(v => ({ ...v, x: d.vx + dx, y: d.vy + dy }));
-    else setAngle({ th: d.th + dx * 0.008, ph: Math.min(1.45, Math.max(0.12, d.ph + dy * 0.006)) });
+    else if (d.mode === 'orbit') setAngle({ th: d.th - dx * 0.008, ph: Math.min(1.45, Math.max(0.12, d.ph + dy * 0.006)) });
+    else if (d.mode === 'part' && d.part) {
+      const [sx, sy] = scenePt(e), gB = unproject(cam, sx, sy, BB_H), bx = gB[0] + d.part.offB[0], by = gB[1] + d.part.offB[1];
+      const onBoard = d.part.board && boards.some(([a, b, c, dd]) => bx >= a! && bx <= c! && by >= b! && by <= dd!);
+      const g0 = unproject(cam, sx, sy, 0), nx = Math.round(onBoard ? bx : g0[0] + d.part.off0[0]), ny = Math.round(onBoard ? by : g0[1] + d.part.off0[1]), inst = doc.parts.find(p => p.id === d.part!.id);
+      if (inst && (nx !== inst.x || ny !== inst.y)) { useBench.getState().movePart(inst.id, nx, ny, !d.pick?.hasAttribute('data-moved')); d.pick?.setAttribute('data-moved', ''); }
+    } else if (d.mode === 'wire') { const to = pinUnder(e); setHover(to); setRubber(scenePt(e)); }
   };
-  const up = () => {
+  const up = (e: { clientX: number; clientY: number; pointerId?: number }) => {
+    if (e.pointerId != null) touches.current.delete(e.pointerId);
+    if (pinch.current) { if (touches.current.size < 2) { pinch.current = null; setMoving(false); } return; }
     const d = drag.current;
-    drag.current = null; setMoving(false);
-    if (!d || d.moved) return;
+    drag.current = null; setMoving(false); setRubber(null);
+    d?.pick?.removeAttribute('data-moved');
+    if (!d) return;
+    if (d.mode === 'wire' && d.from) {
+      const to = pinUnder(e);
+      if (d.moved && to && to !== d.from) useBench.getState().addWire(d.from, to);
+      if (!d.moved) useBench.getState().select(null);
+      return;
+    }
+    if (d.moved) return;
     const id = d.pick?.getAttribute('data-part'), wire = d.pick?.getAttribute('data-wire');
     useBench.getState().select(id ? { kind: 'part', id } : wire ? { kind: 'wire', id: wire } : null);
+  };
+  const drop = (e: React.DragEvent) => {
+    const type = e.dataTransfer.getData('text/eb-part'), def = type && getPart(type);
+    if (!def) return;
+    e.preventDefault();
+    const g = ground(e, (def.mount ?? 'board') === 'board');
+    useBench.getState().addPart(type, Math.round(g.x), Math.round(g.y));
   };
   const wob = wobble > 0 && !moving;
 
   return (
-    <div className="wb-canvas iso-host" ref={host} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onContextMenu={e => e.preventDefault()} style={{ cursor: moving ? 'grabbing' : 'grab' }}>
+    <div className="wb-canvas iso-host" ref={host} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onLostPointerCapture={e => drag.current && up(e)} onPointerLeave={() => !drag.current && setHover(null)} onContextMenu={e => e.preventDefault()} onDragOver={e => e.preventDefault()} onDrop={drop} style={{ cursor: moving ? 'grabbing' : hover ? 'crosshair' : 'grab' }}>
       <svg width="100%" height="100%">
         <defs>
           <filter id="iso-wobble" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="4" /><feDisplacementMap in="SourceGraphic" scale={wobble} /></filter>
@@ -413,13 +548,16 @@ export default function IsoView() {
         <g transform={`translate(${view.x},${view.y}) scale(${view.zoom})`}>
           <g filter={wob ? 'url(#iso-wobble)' : undefined}><Mat cam={cam} {...scene.bounds} /></g>
           {ordered.filter(p => !NO_SHADOW.has(p.inst.type)).map(p => { const u = UPRIGHT[p.inst.type], b = p.def.box(p.props); return <Shadow key={`s${p.inst.id}`} cam={cam} poly={footprint(p.def, p.inst, p.props, u ? { x: b.x, y: b.y + b.h - (u.lean ? b.h * 0.9 : u.depth), w: b.w, h: u.lean ? b.h * 0.9 : u.depth } : undefined)} spread={p.onBoard ? 0.3 : 0.8} />; })}
-          {ordered.map(p => <IsoPart key={p.inst.id} cam={cam} p={p} live={live[p.inst.id]} selected={sel?.kind === 'part' && sel.id === p.inst.id} wobble={wob && p.inst.type !== 'breadboard'} />)}
+          {ordered.map(p => <IsoPart key={p.inst.id} cam={cam} p={p} live={live[p.inst.id]} selected={sel?.kind === 'part' && sel.id === p.inst.id} wobble={wob && p.inst.type !== 'breadboard'} holes={holeLayers.get(p.inst.id)} />)}
           {doc.wires.map(w => {
             const a = pinAt.get(w.a), b = pinAt.get(w.b);
             if (!a || !b) return null;
-            return <g key={w.id} data-wire={w.id} style={{ cursor: 'pointer' }}><Cable d={wirePath(cam, pinPos(a), pinPos(b))} color={w.color} width={sel?.kind === 'wire' && sel.id === w.id ? 4.6 : 3.4} /></g>;
+            const d = wirePath(cam, pinPos(a), pinPos(b));
+            return <g key={w.id} data-wire={w.id} style={{ cursor: 'pointer' }}><path d={d} stroke="transparent" strokeWidth={12} fill="none" /><Cable d={d} color={w.color} width={sel?.kind === 'wire' && sel.id === w.id ? 4.6 : 3.4} /></g>;
           })}
           {labels && ordered.filter(p => p.inst.type !== 'breadboard').map(p => <Label key={`l${p.inst.id}`} cam={cam} p={p} />)}
+          <PinLayer cam={cam} pins={scene.pins} pinPos={pinPos} holes={false} />
+          {(hover || rubber) && <PinHover cam={cam} hover={hover} from={drag.current?.from ?? null} rubber={rubber} pins={scene.pins} pinAt={pinAt} pinPos={pinPos} />}
         </g>
       </svg>
       <div className="iso-tools">
@@ -428,7 +566,7 @@ export default function IsoView() {
         <button className="btn" onClick={fit}>Fit</button>
         <label className="iso-wob">Wobble <input type="range" min={0} max={4} step={0.2} value={wobble} onChange={e => setWobble(+e.target.value)} /></label>
       </div>
-      <div className="wb-3d-hint">drag to orbit · right-drag or Shift-drag to pan · scroll to zoom · switches and buttons work here · build in 2D</div>
+      <div className="wb-3d-hint">drag the mat to orbit · pinch to zoom · two fingers to move · drag a part to move it · drag pin → pin for a wire · Del / R / ⌘Z</div>
     </div>
   );
 }
