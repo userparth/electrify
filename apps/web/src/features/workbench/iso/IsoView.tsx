@@ -11,7 +11,7 @@ const LED_HEX: Record<string, string> = { red: '#e0453a', yellow: '#f2c230', gre
 // Body height in grid units (1 = 2.54 mm); parts not listed use their category default.
 const HEIGHT: Record<string, number> = {
   breadboard: BB_H, battery: 6, psu: 5, fgen: 4, dmm: 1.6, scope: 5, 'logic-analyzer': 2.4, 'logic-probe': 1.2,
-  'arduino-uno': 1.2, rpi4: 1.6, pico: 0.8, 'seven-segment': 2.2, buzzer: 2.6, motor: 3.4, lamp: 3, button: 1.2,
+  'arduino-uno': 4.6, rpi4: 6.4, pico: 2.2, 'seven-segment': 2.2, buzzer: 2.6, motor: 3.4, lamp: 3, button: 1.2,
   spdt: 1.2, spst: 1.4, 'logic-switch': 1.2, 'dip-switch-8': 1, pot: 2, fuse: 1.4, inductor: 1.8, 'cap-ceramic': 1.2,
   'charge-controller': 2.2, 'dc-fan': 2.4, router: 2.2, inverter: 3.2, 'dcdc-module': 1, 'usb-phone': 0.8, relay: 2.2,
   'bar-graph': 1.4, 'rgb-led': 2.6, ldr: 0.8, ntc: 0.8, 'ina226-module': 0.8, lm7805: 2.2,
@@ -211,6 +211,34 @@ function SolarPanel({ cam, inst, def, props, live, act, selected }: { cam: Cam; 
 }
 
 const NO_LIVE: Live = {};
+
+// Boards: a thin PCB with the 2D drawing as silkscreen, plus real connectors standing on it (z is above the PCB top).
+type Feat = { x: number; y: number; w: number; h: number; t: number; color: string; kind?: 'female' | 'male' | 'button' | 'dip'; label?: string; port?: { side: 'x+' | 'x-' | 'y+'; slots?: number; round?: boolean } };
+const SILVER = '#c9ced2';
+const BOARDS: Record<string, { pcb: number; lift?: number; box?: Box; pinTop?: number; feats: Feat[] }> = {
+  'arduino-uno': {
+    pcb: 0.6, pinTop: 3.2, feats: [
+      { x: 7.4, y: 0.4, w: 10.2, h: 1.2, t: 3.2, color: '#1b1b1b', kind: 'female' }, { x: 18.4, y: 0.4, w: 8.2, h: 1.2, t: 3.2, color: '#1b1b1b', kind: 'female' },
+      { x: 10.4, y: 19.4, w: 7.2, h: 1.2, t: 3.2, color: '#1b1b1b', kind: 'female' }, { x: 19.4, y: 19.4, w: 6.2, h: 1.2, t: 3.2, color: '#1b1b1b', kind: 'female' },
+      { x: -2.2, y: 3, w: 5.7, h: 4.6, t: 4, color: SILVER, port: { side: 'x-' } }, { x: -1.6, y: 13.6, w: 5.6, h: 3.6, t: 3.8, color: '#1f1f22', port: { side: 'x-', round: true } },
+      { x: 12, y: 12.6, w: 13.5, h: 3.6, t: 1.4, color: '#1d1d1b', kind: 'dip', label: 'ATMEGA328P' }, { x: 3.4, y: 1.6, w: 1.6, h: 1.6, t: 1, color: '#d9d4c4', kind: 'button' },
+    ],
+  },
+  rpi4: {
+    pcb: 0.6, pinTop: 3.3, feats: [
+      { x: -0.7, y: -0.7, w: 20.4, h: 2.4, t: 1, color: '#1d1d1b', kind: 'male' },
+      { x: 4, y: 6, w: 6, h: 6, t: 0.5, color: '#b8bec4' }, { x: 11.5, y: 6.5, w: 5, h: 5, t: 0.4, color: '#262624' },
+      { x: 22, y: 2, w: 8.5, h: 4.5, t: 5.8, color: SILVER, port: { side: 'x+', slots: 2 } }, { x: 22, y: 7.5, w: 8.5, h: 4.5, t: 5.8, color: SILVER, port: { side: 'x+', slots: 2 } }, { x: 22, y: 13, w: 8.5, h: 5.5, t: 5.2, color: SILVER, port: { side: 'x+' } },
+      { x: -1, y: 18.6, w: 3.4, h: 1.9, t: 1.2, color: SILVER, port: { side: 'y+' } }, { x: 4, y: 18.6, w: 3.4, h: 1.9, t: 1.1, color: SILVER, port: { side: 'y+' } }, { x: 8.5, y: 18.6, w: 3.4, h: 1.9, t: 1.1, color: SILVER, port: { side: 'y+' } },
+    ],
+  },
+  pico: {
+    pcb: 0.4, lift: 1.2, box: { x: -1, y: -7.8, w: 21, h: 8.6 }, feats: [
+      { x: -3, y: -5, w: 2.8, h: 3, t: 1.1, color: SILVER, port: { side: 'x-' } }, { x: 7, y: -5.4, w: 4.2, h: 4.2, t: 0.35, color: '#262624', label: 'RP2040' },
+      { x: 13.2, y: -5, w: 2.4, h: 3.4, t: 0.3, color: '#262624' }, { x: 1, y: -2.8, w: 1.8, h: 1.3, t: 0.7, color: '#f2efe7', kind: 'button' },
+    ],
+  },
+};
 const NO_SHADOW = new Set(['breadboard', 'led', 'resistor', 'cap-ceramic']);
 // Instruments stand up with their 2D drawing as the front panel; dmm leans back on a kickstand.
 const UPRIGHT: Record<string, { depth: number; lean?: number }> = { psu: { depth: 7 }, fgen: { depth: 6 }, scope: { depth: 9 }, 'charge-controller': { depth: 2.6 }, dmm: { depth: 1.4, lean: 0.42 } };
@@ -250,6 +278,67 @@ function Upright({ cam, inst, def, props, base, lid }: { cam: Cam; inst: Inst; d
   );
 }
 
+/** A box in the part's local grid, from z0 to z1 above the scene floor: visible sides, then the lid. */
+function LBox({ cam, inst, f, z0, z1, color, lid }: { cam: Cam; inst: Inst; f: Box; z0: number; z1: number; color: string; lid?: ReactNode }) {
+  const c: [number, number][] = [[f.x, f.y], [f.x + f.w, f.y], [f.x + f.w, f.y + f.h], [f.x, f.y + f.h]];
+  const P = ([x, y]: [number, number], z: number) => project(cam, ...toWorld(inst, [x, y, z])), faces: ReactNode[] = [];
+  for (let i = 0; i < 4; i++) {
+    const a = c[i]!, b = c[(i + 1) % 4]!, [nx, ny] = rotLocal(inst.rot, b[1] - a[1], -(b[0] - a[0])), { visible, lit } = faceLook(cam, nx, ny);
+    if (visible) faces.push(<polygon key={i} points={pts([P(a, z0), P(b, z0), P(b, z1), P(a, z1)])} fill={shade(color, lit)} stroke={INK} strokeWidth={1.1} strokeLinejoin="round" />);
+  }
+  return <g>{faces}<polygon points={pts(c.map(q => P(q, z1)))} fill={shade(color, 0.22)} stroke={INK} strokeWidth={1.1} strokeLinejoin="round" />{lid}</g>;
+}
+
+/** Openings on a connector's outer face (USB slots, RJ45, barrel hole), drawn only when that face is visible. */
+function Port({ cam, inst, f, z0, z1 }: { cam: Cam; inst: Inst; f: Feat; z0: number; z1: number }) {
+  const { side, slots = 1, round } = f.port!, [nx, ny] = side === 'x+' ? [1, 0] : side === 'x-' ? [-1, 0] : [0, 1];
+  if (!faceLook(cam, ...rotLocal(inst.rot, nx, ny)).visible) return null;
+  // Face coordinates: s runs along the face (0..1), q runs up it (0..1).
+  const pt = (s: number, q: number) => {
+    const z = z0 + (z1 - z0) * q;
+    const [x, y] = side === 'x+' ? [f.x + f.w + 0.02, f.y + f.h * s] : side === 'x-' ? [f.x - 0.02, f.y + f.h * (1 - s)] : [f.x + f.w * (1 - s), f.y + f.h + 0.02];
+    return project(cam, ...toWorld(inst, [x, y, z]));
+  };
+  const out: ReactNode[] = [];
+  for (let k = 0; k < slots; k++) {
+    const q0 = 0.18 + (k * 0.72) / slots, q1 = q0 + 0.72 / slots - 0.12;
+    if (round) { const [cx, cy] = pt(0.5, 0.5), [ex] = pt(0.75, 0.5); out.push(<ellipse key={k} cx={cx} cy={cy} rx={Math.abs(ex - cx) || 3} ry={(z1 - z0) * K * cam.cp * 0.25} fill="#050505" stroke="#5a5a5e" strokeWidth={0.8} />); continue; }
+    out.push(<polygon key={k} points={pts([pt(0.14, q0), pt(0.86, q0), pt(0.86, q1), pt(0.14, q1)])} fill="#141416" stroke="#5a5a5e" strokeWidth={0.8} />);
+  }
+  return <g pointerEvents="none">{out}</g>;
+}
+
+function Board({ cam, inst, def, props, base, lid }: { cam: Cam; inst: Inst; def: PartDef; props: Props; base: number; lid: ReactNode }) {
+  const spec = BOARDS[inst.type]!, lift = spec.lift ?? 0, top = base + lift + spec.pcb, pins = def.pins(props);
+  const depth = (f: Box) => Math.max(...[[f.x, f.y], [f.x + f.w, f.y], [f.x + f.w, f.y + f.h], [f.x, f.y + f.h]].map(([x, y]) => viewXY(cam, ...(toWorld(inst, [x!, y!, 0]).slice(0, 2) as [number, number]))[1]));
+  const inside = (f: Box) => pins.filter(p => p.x >= f.x && p.x <= f.x + f.w && p.y >= f.y && p.y <= f.y + f.h);
+  const at = (x: number, y: number, z: number) => project(cam, ...toWorld(inst, [x, y, z]));
+  const feats = [...spec.feats].sort((a, b) => depth(a) - depth(b)).map((f, i) => {
+    const z1 = top + f.t;
+    let extra: ReactNode = null;
+    if (f.kind === 'female') extra = inside(f).map(p => { const q = [[-0.28, -0.28], [0.28, -0.28], [0.28, 0.28], [-0.28, 0.28]].map(([dx, dy]) => at(p.x + dx!, p.y + dy!, z1)); return <polygon key={p.id} points={pts(q)} fill="#050505" stroke="#3a3a3e" strokeWidth={0.6} />; });
+    if (f.label) extra = <g transform={mapMatrix(cam, inst, (lx, ly) => [lx, ly, z1])} pointerEvents="none"><text x={(f.x + f.w / 2) * GRID} y={(f.y + f.h / 2) * GRID + 3} textAnchor="middle" fontSize={Math.min(9, f.h * 3)} fontWeight={700} fill="#d9d4c4" fontFamily="ui-monospace,Menlo,monospace">{f.label}</text></g>;
+    if (f.kind === 'button') { const [cx, cy] = at(f.x + f.w / 2, f.y + f.h / 2, z1); extra = <ellipse cx={cx} cy={cy} rx={f.w * K * 0.3} ry={f.w * K * 0.3 * cam.sp} fill={inst.type === 'pico' ? '#f2efe7' : '#d6452f'} stroke={INK} strokeWidth={1} />; }
+    const box = <g key={i}><LBox cam={cam} inst={inst} f={f} z0={top} z1={z1} color={f.color} lid={extra} />{f.port && <Port cam={cam} inst={inst} f={f} z0={top} z1={z1} />}</g>;
+    if (f.kind === 'dip') {
+      const n = Math.round(f.w - 0.5), legs: ReactNode[] = [];
+      for (let k = 0; k < n; k++) for (const y of [f.y - 0.25, f.y + f.h + 0.25]) { const x = f.x + 0.75 + k * (f.w - 1.5) / (n - 1); legs.push(<path key={`${k}${y}`} d={polyline(cam, [toWorld(inst, [x, y, top]), toWorld(inst, [x, y, top + f.t * 0.55]), toWorld(inst, [x, y + (y < f.y ? 0.25 : -0.25), top + f.t * 0.55])])} stroke="#b9bec3" strokeWidth={1.6} fill="none" />); }
+      return <g key={i}>{legs}{box}</g>;
+    }
+    if (f.kind !== 'male') return box;
+    const posts = [...inside(f)].sort((a, b) => viewXY(cam, ...(toWorld(inst, [a.x, a.y, 0]).slice(0, 2) as [number, number]))[1] - viewXY(cam, ...(toWorld(inst, [b.x, b.y, 0]).slice(0, 2) as [number, number]))[1]);
+    return <g key={i}>{box}{posts.map(p => <path key={p.id} d={polyline(cam, [toWorld(inst, [p.x, p.y, z1]), toWorld(inst, [p.x, p.y, base + (spec.pinTop ?? 0) + spec.pcb])])} stroke="#d8b04a" strokeWidth={2.4} strokeLinecap="square" />)}</g>;
+  });
+  const legs = lift ? pins.map(p => <Cable key={p.id} d={polyline(cam, [toWorld(inst, [p.x, p.y, base]), toWorld(inst, [p.x, p.y, base + lift])])} color="#c3c8cd" width={1.6} />) : null;
+  return (
+    <g>
+      {legs}
+      <Extrude cam={cam} inst={inst} def={def} props={props} base={base + lift} h={spec.pcb} top={lid} box={spec.box} />
+      {feats}
+    </g>
+  );
+}
+
 interface Placed { inst: Inst; def: PartDef; props: Props; base: number; h: number; depth: number; onBoard: boolean }
 
 const IsoPart = memo(function IsoPart({ cam, p, live, selected, wobble, holes }: { cam: Cam; p: Placed; live: Live | undefined; selected: boolean; wobble: boolean; holes?: ReactNode }) {
@@ -263,7 +352,8 @@ const IsoPart = memo(function IsoPart({ cam, p, live, selected, wobble, holes }:
   else if (inst.type === 'cap-electrolytic') {
     const [rx, ry] = rotLocal(inst.rot, 1, 0), x = inst.x + rx, y = inst.y + ry;
     body = <g>{[0, 2].map(lx => { const [qx, qy] = rotLocal(inst.rot, lx, 0); return <Cable key={lx} d={polyline(cam, [[inst.x + qx, inst.y + qy, base], [inst.x + qx, inst.y + qy, base + 0.8]])} color="#c3c8cd" width={1.5} />; })}<Can cam={cam} x={x} y={y} z0={base + 0.6} z1={base + 4.4} r={1.35} fill={lv.reversed ? '#8a3a2a' : '#2f4a8a'} /></g>;
-  } else if (UPRIGHT[inst.type]) body = <Upright cam={cam} inst={inst} def={def} props={props} base={base} lid={lid} />;
+  } else if (BOARDS[inst.type]) body = <Board cam={cam} inst={inst} def={def} props={props} base={base} lid={lid} />;
+  else if (UPRIGHT[inst.type]) body = <Upright cam={cam} inst={inst} def={def} props={props} base={base} lid={lid} />;
   else if (inst.type === 'cap-ceramic') body = <Disc cam={cam} inst={inst} base={base} span={def.pins(props)[1]?.x ?? 2} r={1.05} fill="#e8b13a" />;
   else if (inst.type === 'solar') body = <SolarPanel cam={cam} inst={inst} def={def} props={props} live={lv} act={act} selected={selected} />;
   else if (def.category === 'Digital ICs' && /^DIP|^\d|·/.test(def.pins(props)[0]?.label ?? '')) {
@@ -411,6 +501,8 @@ export default function IsoView() {
       const p = byId.get(pin.inst.id);
       const onHole = pin.inst.type === 'breadboard' || ((pin.def.mount ?? 'board') === 'board' && scene.holes.has(`${pin.x},${pin.y}`));
       if (onHole || !p) return [pin.x, pin.y, BB_H];
+      const bs = BOARDS[p.inst.type];
+      if (bs?.pinTop != null) return [pin.x, pin.y, p.base + bs.pcb + bs.pinTop];
       if (UPRIGHT[p.inst.type]) { const [x, y, z] = uprightMap(p.def, p.props, p.base)(pin.pin.x, pin.pin.y); return toWorld(p.inst, [x, y + 0.15, z]); }
       if (p.inst.type === 'solar') return [pin.x, pin.y, solarZ(p.def.box(p.props), pin.pin.y) - 0.3];
       if ((pin.def.mount ?? 'board') === 'board') return [pin.x, pin.y, p.base];
