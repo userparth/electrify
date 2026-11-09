@@ -2,6 +2,7 @@
 import { BOARD_TO_BCM, GPIO } from './layout';
 import { PY_BOOT, PY_FILES } from './shims';
 import { createPythonWorker } from './worker';
+import { asset } from '@/lib/paths';
 
 interface Session {
   worker: Worker | null;
@@ -17,7 +18,8 @@ interface Session {
   api: { gpio: Int32Array; read(): string; write(t: string): void; status(): { running: boolean; message?: string } };
 }
 
-const INDEX_URL = '/pyodide/';
+// Versioned folder so a new Pyodide never meets stale CDN/browser caches.
+const INDEX_URL = asset('/pyodide/v314.0.7/');
 const MAX_OUT = 20000;
 
 function resetPins(g: Int32Array) {

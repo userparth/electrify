@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { asset } from '@/lib/paths';
 
 const MODULES = [
   { href: '/learn', title: 'Lessons', text: 'Guided lessons with a live circuit: steps tick themselves when you get them right, with hints, mistakes to try and a quiz.' },
@@ -12,7 +13,9 @@ export default function Home() {
       <h1>⚡ Electronics Bench</h1>
       <p>Learn electronics by building, running and breaking circuits on screen — then do it on real hardware.</p>
       <div className="home-grid">
-        {MODULES.map(m => (
+        {MODULES.map(m => m.href === '/solar' ? (
+          <a key={m.href} className="home-card" href={asset('/solar/')}><b>{m.title} →</b><span>{m.text}</span></a>
+        ) : (
           <Link key={m.href} className="home-card" href={m.href} prefetch={false}>
             <b>{m.title} →</b>
             <span>{m.text}</span>

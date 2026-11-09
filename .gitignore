@@ -10,3 +10,7 @@ coverage
 # downloaded by scripts/fetch-assets.mjs
 apps/web/public/firmware/
 apps/web/public/pyodide/
+
+# server details for deploy/deploy-hostinger.sh
+deploy/.env.deploy
+apps/web/out/

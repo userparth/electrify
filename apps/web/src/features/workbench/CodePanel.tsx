@@ -2,6 +2,7 @@
 import { getPart } from '@eb/parts';
 import { useEffect, useRef, useState } from 'react';
 import { runner, useBench } from './store';
+import { COMPILE_URL } from '@/lib/paths';
 
 export function CodePanel() {
   const sel = useBench(s => s.sel), doc = useBench(s => s.doc), serial = useBench(s => s.serial), status = useBench(s => s.status);
@@ -22,7 +23,7 @@ export function CodePanel() {
     save(); setBusy(true); setLog(null);
     try {
       if (lang === 'arduino') {
-        const res = await fetch('/api/compile', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, board: 'uno' }) });
+        const res = await fetch(COMPILE_URL, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, board: 'uno' }) });
         const r = await res.json() as { ok: boolean; hex?: string; log: string; cached?: boolean };
         setLog({ ok: r.ok, text: r.ok ? `✓ Compiled${r.cached ? ' (cached)' : ''} and uploaded.\n${r.log}` : r.log });
         if (r.ok && r.hex) { useBench.getState().clearSerial(inst.id); useBench.getState().setProps(inst.id, { code, binary: r.hex }); }

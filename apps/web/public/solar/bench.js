@@ -24,7 +24,7 @@ const BENCH_VIEW = [['labels', 'Labels', 'hide-labels'], ['off', 'Disconnected w
 
 (function renderSidebar() {
   const side = document.getElementById('side'), cur = side.dataset.cur;
-  side.innerHTML = '<a class="fig" href="/" style="margin-bottom:10px"><b>← Electronics Bench</b><small>home · workbench</small></a><h1>Solar module</h1><p>A hand-inked solar setup you wire, run and break on screen first. Then on real hardware.</p>'
+  side.innerHTML = '<a class="fig" href="../" style="margin-bottom:10px"><b>← Electronics Bench</b><small>home · workbench</small></a><h1>Solar module</h1><p>A hand-inked solar setup you wire, run and break on screen first. Then on real hardware.</p>'
     + BENCH_FIGS.map(f => f.grp ? `<div class="grp">${f.grp}</div>`
       : `<a class="fig${f.n === cur ? ' on' : ''}${f.href ? '' : ' soon'}"${f.href ? ` href="${f.href}"` : ''}><b>${f.tool || `Fig. ${f.n} ${f.t}`}</b><small>${f.s}</small></a>`).join('')
     + '<div class="grp">View</div>'

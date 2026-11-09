@@ -1,9 +1,10 @@
 'use client';
+import { asset } from '@/lib/paths';
 // Mirrors FirmwareHost / PicoFirmware in packages/parts/src/mcu/rp2040.ts.
 interface PicoFirmware { bootrom: Uint8Array; uf2: Uint8Array }
 interface FirmwareHost { pico(): PicoFirmware | null; load?(): Promise<PicoFirmware | null> }
 
-const FILES = { bootrom: '/firmware/rp2040-bootrom-b1.bin', uf2: '/firmware/micropython-rp2040.uf2' };
+const FILES = { bootrom: asset('/firmware/rp2040-bootrom-b1.bin'), uf2: asset('/firmware/micropython-rp2040.uf2') };
 
 class BrowserFirmwareHost implements FirmwareHost {
   private fw: PicoFirmware | null = null;

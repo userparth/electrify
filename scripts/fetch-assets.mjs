@@ -51,7 +51,7 @@ for (const a of ASSETS) {
 }
 
 const COPY = [
-  { name: 'Pyodide runtime (MPL-2.0)', pkg: 'pyodide', from: 'apps/web', out: 'apps/web/public/pyodide', only: /\.(mjs|js|wasm|zip|json)$/, skip: /^(package\.json|.*\.map)$/ },
+  { name: 'Pyodide runtime (MPL-2.0)', pkg: 'pyodide', from: 'apps/web', out: 'apps/web/public/pyodide/v314.0.7', only: /\.(mjs|js|wasm|zip|json)$/, skip: /^(package\.json|.*\.map)$/ },
 ];
 
 for (const c of COPY) {
