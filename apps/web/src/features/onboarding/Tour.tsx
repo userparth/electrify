@@ -5,6 +5,7 @@ import { t } from '@/lib/i18n';
 import type { MessageKey } from '@/messages/en';
 import { loadProfile, useProfile } from '@/lib/profile';
 import { useBench } from '../workbench/store';
+import { useGuide } from '../workbench/guide';
 
 type StepId = 'add' | 'move' | 'wire' | 'select' | '3d' | 'end';
 interface Step { id: StepId; text: [MessageKey, MessageKey]; anchor: [string, string] }
@@ -30,6 +31,7 @@ export function BenchTour({ phone }: { phone: boolean }) {
   const [i, setI] = useState(0), [rect, setRect] = useState<DOMRect | null>(null);
   const base = useRef(snap());
   useEffect(() => { loadProfile(); }, []);
+  const playing = useGuide(s => !!s.playing);
   const active = loaded && profile.done && !profile.tourDone;
   const step = STEPS[i]!, k = phone ? 1 : 0;
 
@@ -38,6 +40,7 @@ export function BenchTour({ phone }: { phone: boolean }) {
   useEffect(() => {
     if (!active) return;
     return useBench.subscribe(s => {
+      if (useGuide.getState().playing) return;
       const b = base.current, id = STEPS[i]!.id;
       // Only edits that land in the undo history count, so loading a saved circuit never ticks a step.
       if (s.past.length < b.past) { base.current = snap(); return; }
@@ -59,7 +62,7 @@ export function BenchTour({ phone }: { phone: boolean }) {
     return () => { clearInterval(id); removeEventListener('resize', find); };
   }, [active, step, k]);
 
-  if (!active) return null;
+  if (!active || playing) return null;
   const close = () => { setProfile({ tourDone: true }); if (useBench.getState().wireMode) useBench.getState().setWireMode(false); };
   const W = Math.min(320, innerWidth - 24);
     let left = 12, top = 80;

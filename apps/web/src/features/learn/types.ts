@@ -1,5 +1,6 @@
 import type { Live } from '@eb/parts';
 import type { Doc, Inst } from '../workbench/model';
+import type { Act } from '../workbench/guide';
 
 /** What a step's check can look at: the circuit and the live simulation. */
 export interface Check {
@@ -29,6 +30,8 @@ export interface Step {
   text: string;
   hint?: string;
   check?: (c: Check) => boolean;
+  /** What "Show me" plays on the bench for this step. */
+  demo?: Act[];
 }
 
 export interface Quiz { q: string; options: string[]; answer: number; why: string }

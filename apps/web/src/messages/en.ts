@@ -12,6 +12,7 @@ export const en = {
   'ob.welcome.go': "Let's set you up",
 
   'ob.who.title': 'Who are you?',
+  'ob.who.beginner': 'Complete beginner, just curious',
   'ob.who.school': 'School student',
   'ob.who.college': 'College or university',
   'ob.who.maker': 'Hobbyist or maker',
@@ -94,6 +95,19 @@ export const en = {
   'signin.code.spam': 'Not there? Look in spam, or send a new code.',
   'signin.close': 'Close',
   'signin.terms': 'By signing in you agree to the terms and privacy policy.',
+  'demo.showMe': 'Show me',
+  'demo.hint': 'Show a hint',
+  'demo.hintShort': 'Hint',
+  'demo.gotIt': 'Got it →',
+  'demo.watching': 'Watch how it is done…',
+  'demo.building': 'Building the example…',
+  'demo.stop': 'Stop',
+  'demo.skip': 'Skip',
+  'demo.yourTurn': 'Your turn! Now you try it.',
+  'demo.forStep': 'You need this now',
+  'demo.lessonDone': 'Lesson complete',
+  'demo.quizNext': 'Steps done · answer the quiz',
+  'demo.openLesson': 'Open the lesson',
 } as const;
 
 export type MessageKey = keyof typeof en;

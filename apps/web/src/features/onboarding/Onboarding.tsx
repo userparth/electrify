@@ -35,7 +35,7 @@ function Choice({ on, onClick, title, desc }: { on: boolean; onClick(): void; ti
   return <button className={`ob-choice ${on ? 'on' : ''}`} onClick={onClick} aria-pressed={on}><b>{title}</b>{desc && <small>{desc}</small>}</button>;
 }
 
-const ROLES: Role[] = ['school', 'college', 'maker', 'teacher'];
+const ROLES: Role[] = ['beginner', 'school', 'college', 'maker', 'teacher'];
 const GOALS: Goal[] = ['basics', 'analog', 'digital', 'micro', 'solar', 'explore'];
 const LEVELS: Level[] = ['new', 'basics', 'built'];
 const STEPS = 6;
@@ -62,7 +62,7 @@ export function Onboarding({ onClose }: { onClose(): void }) {
   else if (step === 1) body = (
     <>
       <h1>{t('ob.who.title')}</h1>
-      <div className="ob-grid">{ROLES.map(r => <Choice key={r} on={profile.role === r} onClick={() => set({ role: r })} title={t(`ob.who.${r}` as MessageKey)} />)}</div>
+      <div className="ob-grid roles">{ROLES.map(r => <Choice key={r} on={profile.role === r} onClick={() => set(r === 'beginner' ? { role: r, level: 'new', goals: profile.goals.length ? profile.goals : ['basics'] } : { role: r })} title={t(`ob.who.${r}` as MessageKey)} />)}</div>
       <h2>{t('ob.age.q')}</h2>
       <div className="ob-grid two">
         <Choice on={profile.under13 === false} onClick={() => set({ under13: false })} title={t('ob.age.yes')} />

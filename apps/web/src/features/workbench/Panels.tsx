@@ -3,6 +3,9 @@ import { PARTS, formatSI, getPart, parseSI, type Category, type PropDef } from '
 import { useState } from 'react';
 import { EXAMPLES } from './examples';
 import { useBench } from './store';
+import { pending, useGuide } from './guide';
+import { buildAnimated } from './Demo';
+import { t } from '@/lib/i18n';
 
 const CATS: Category[] = ['Microcontrollers', 'Instruments', 'Boards', 'Power', 'Passive', 'Semiconductors', 'Switches', 'Digital ICs', 'Output'];
 
@@ -22,8 +25,15 @@ export function Palette({ onPick }: { onPick?: (type: string) => void } = {}) {
   const [q, setQ] = useState('');
   const add = (type: string) => { addAtCenter(type); onPick?.(type); };
   const list = PARTS.filter(p => !q || `${p.name} ${p.blurb} ${p.type}`.toLowerCase().includes(q.toLowerCase()));
+  const doc = useBench(s => s.doc), acts = useGuide(s => s.acts), base = useGuide(s => s.base), need = pending(acts, base, doc, () => false).types;
+  const item = (p: (typeof PARTS)[number], glow = false) => (
+    <div key={p.type} data-type={p.type} className={`wb-pal ${glow ? 'glow' : ''}`} draggable onDragStart={e => { e.dataTransfer.setData('text/eb-part', p.type); e.dataTransfer.effectAllowed = 'copy'; }} onDoubleClick={() => add(p.type)} onClick={onPick ? () => add(p.type) : undefined} title={onPick ? 'Tap to add' : 'Drag onto the bench, or double-click'}>
+      <b>{p.name}</b><small>{p.blurb}</small>
+    </div>
+  );
   return (
     <aside className="wb-palette">
+      {need.length > 0 && <div className="wb-need"><div className="wb-cat">{t('demo.forStep')}</div>{PARTS.filter(p => need.includes(p.type)).map(p => item(p, true))}</div>}
       <input className="wb-search" placeholder="Search parts…" value={q} onChange={e => setQ(e.target.value)} />
       {CATS.map(cat => {
         const items = list.filter(p => p.category === cat);
@@ -31,11 +41,7 @@ export function Palette({ onPick }: { onPick?: (type: string) => void } = {}) {
         return (
           <div key={cat}>
             <div className="wb-cat">{cat}</div>
-            {items.map(p => (
-              <div key={p.type} className="wb-pal" draggable onDragStart={e => { e.dataTransfer.setData('text/eb-part', p.type); e.dataTransfer.effectAllowed = 'copy'; }} onDoubleClick={() => add(p.type)} onClick={onPick ? () => add(p.type) : undefined} title={onPick ? 'Tap to add' : 'Drag onto the bench, or double-click'}>
-                <b>{p.name}</b><small>{p.blurb}</small>
-              </div>
-            ))}
+            {items.map(p => item(p))}
           </div>
         );
       })}
@@ -119,7 +125,7 @@ export function Toolbar() {
       <span className="wb-grow" />
       <button className="btn" disabled={!past} onClick={b.undo}>↶ Undo</button>
       <button className="btn" disabled={!future} onClick={b.redo}>↷ Redo</button>
-      <select className="btn" value="" onChange={e => { const ex = EXAMPLES.find(x => x.id === e.target.value); if (ex) { if (ex.dt) b.setDt(ex.dt); b.load(ex.build()); } }}>
+      <select className="btn" value="" onChange={e => { const ex = EXAMPLES.find(x => x.id === e.target.value); if (ex) buildAnimated(ex.build(), ex.dt); }}>
         <option value="">Examples…</option>
         {EXAMPLES.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
       </select>

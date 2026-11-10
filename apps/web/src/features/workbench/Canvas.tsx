@@ -3,6 +3,7 @@ import { GRID, getPart, type Live, type Props } from '@eb/parts';
 import { memo, useMemo, useRef, useState } from 'react';
 import { placedPins, type Inst, type PlacedPin } from './model';
 import { runner, useBench } from './store';
+import { pending, useGuide } from './guide';
 
 const SNAP_PX = 9;
 
@@ -59,6 +60,8 @@ export function Canvas() {
   const pickRef = useRef<typeof pick>(null);
   const setPick = (p: typeof pick) => { pickRef.current = p; setPickState(p); };
 
+  const acts = useGuide(s => s.acts), base = useGuide(s => s.base), playing = useGuide(s => s.playing);
+  const glow = playing ? [] : pending(acts, base, doc, (a, b) => !!runner.net.get(a) && runner.net.get(a) === runner.net.get(b)).pins;
   const pins = useMemo(() => doc.parts.flatMap(placedPins), [doc.parts]);
   const pinAt = useMemo(() => new Map(pins.map(p => [p.key, p])), [pins]);
   const order = useMemo(() => [...doc.parts].sort((a, b) => (a.type === 'breadboard' ? -1 : 0) - (b.type === 'breadboard' ? -1 : 0)), [doc.parts]);
@@ -225,6 +228,7 @@ export function Canvas() {
               <circle cx={f.x * GRID} cy={f.y * GRID} r={7} fill="#3a6ed633" stroke="#3a6ed6" strokeWidth={2.5} className="wb-pulse" />
             </g>
           ); })()}
+          {glow.map(k => { const p = pinAt.get(k); return p && <circle key={'g' + k} cx={p.x * GRID} cy={p.y * GRID} r={7} fill="#f3c33b55" stroke="#e0a400" strokeWidth={2.5} className="wb-pulse" pointerEvents="none" />; })}
         </g>
       </svg>
       {pick && <Loupe pick={pick} zoom={view.zoom} from={wireFrom ? pinAt.get(wireFrom) ?? null : null} />}

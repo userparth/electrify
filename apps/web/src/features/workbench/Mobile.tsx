@@ -7,6 +7,7 @@ import { Canvas } from './Canvas';
 import { CodePanel } from './CodePanel';
 import { EventLog, Inspector, Palette, Toolbar } from './Panels';
 import { useBench } from './store';
+import { pending, useGuide } from './guide';
 import { asset } from '@/lib/paths';
 
 const IsoView = dynamic(() => import('./iso/IsoView'), { ssr: false, loading: () => <div className="wb-canvas wb-3d-loading">Loading…</div> });
@@ -24,10 +25,12 @@ export function useIsPhone() {
 
 type Tab = 'parts' | 'lesson' | 'part' | 'code' | 'log' | 'menu';
 
-export function MobileWorkbench({ side, peek, heading }: { side?: ReactNode; peek?: ReactNode; heading?: string }) {
+export function MobileWorkbench({ side, peek, heading }: { side?: ReactNode; peek?: (open: () => void) => ReactNode; heading?: string }) {
   const wireMode = useBench(s => s.wireMode), wireFrom = useBench(s => s.wireFrom);
   const view3d = useBench(s => s.view3d), running = useBench(s => s.running), sel = useBench(s => s.sel), doc = useBench(s => s.doc), logN = useBench(s => s.log.length);
   const [tab, setTab] = useState<Tab | null>(null);
+  const playing = useGuide(s => s.playing), acts = useGuide(s => s.acts), base = useGuide(s => s.base), needs = pending(acts, base, doc, () => false).types.length > 0;
+  useEffect(() => { if (playing) setTab(null); }, [playing]);
   const b = useBench.getState();
   const inst = sel?.kind === 'part' ? doc.parts.find(p => p.id === sel.id) : undefined, def = inst && getPart(inst.type);
   const hasCode = !!def?.program;
@@ -49,21 +52,26 @@ export function MobileWorkbench({ side, peek, heading }: { side?: ReactNode; pee
       </header>
       <div className="mb-stage">
         {view3d ? <IsoView /> : <Canvas />}
-        {peek && !tab && !wireMode && <button className="mb-peek" onClick={() => setTab('lesson')}>{peek}</button>}
-        {wireMode ? (
+        {wireMode && (
           <div className="mb-wirebar">
             <span><b>Wire</b> · {wireFrom ? 'now tap the second pin' : 'tap the first pin'}{' '}<small>(press, slide, lift — the loupe shows the hole)</small></span>
             {wireFrom && <button className="btn" onClick={() => useBench.setState({ wireFrom: null })}>Undo pick</button>}
             <button className="btn on" onClick={() => b.setWireMode(false)}>Done</button>
           </div>
-        ) : !tab && !sel && <button className="mb-fab" onClick={() => { setTab(null); b.setWireMode(true); }}>⌁ Wire</button>}
-        {sel && tab !== 'part' && !wireMode && (
-          <div className="mb-actions">
-            {sel.kind === 'part' && <button className="btn" onClick={() => b.rotate(sel.id)}>⟳ Rotate</button>}
-            <button className="btn" onClick={() => b.remove(sel)}>🗑 Delete</button>
-            {sel.kind === 'part' && <button className="btn" onClick={() => setTab('part')}>⚙ Settings</button>}
-            {hasCode && <button className="btn" onClick={() => setTab('code')}>⌨ Code</button>}
-            <button className="btn" onClick={() => b.select(null)} aria-label="Deselect">✕</button>
+        )}
+        {!tab && !playing && (
+          <div className="mb-dock">
+            {!sel && !wireMode && <button className="mb-fab" onClick={() => b.setWireMode(true)}>⌁ Wire</button>}
+            {sel && !wireMode && (
+              <div className="mb-actions">
+                {sel.kind === 'part' && <button className="btn" onClick={() => b.rotate(sel.id)}>⟳ Rotate</button>}
+                <button className="btn" onClick={() => b.remove(sel)}>🗑 Delete</button>
+                {sel.kind === 'part' && <button className="btn" onClick={() => setTab('part')}>⚙ Settings</button>}
+                {hasCode && <button className="btn" onClick={() => setTab('code')}>⌨ Code</button>}
+                <button className="btn" onClick={() => b.select(null)} aria-label="Deselect">✕</button>
+              </div>
+            )}
+            {peek?.(() => setTab('lesson'))}
           </div>
         )}
         {tab && (
@@ -82,7 +90,7 @@ export function MobileWorkbench({ side, peek, heading }: { side?: ReactNode; pee
         )}
       </div>
       <nav className="mb-tabs">
-        {tabs.map(([t, icon, label]) => <button key={t} className={tab === t ? 'on' : ''} onClick={() => toggle(t)}><span>{icon}</span>{label}</button>)}
+        {tabs.map(([t, icon, label]) => <button key={t} className={`${tab === t ? 'on' : ''} ${t === 'parts' && needs && tab !== 'parts' ? 'glow' : ''}`} onClick={() => toggle(t)}><span>{icon}</span>{label}</button>)}
       </nav>
     </div>
   );

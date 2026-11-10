@@ -3,9 +3,10 @@ import { getPart, GRID, type Live, type Props } from '@eb/parts';
 import { create } from 'zustand';
 import { placedPins, type Doc, type Inst, type Wire, uid } from './model';
 import type { FromSim, LogEntry, ToSim } from './protocol';
+import { useGuide } from './guide';
 
 /** Zoom and pan so every part fits the visible canvas. */
-function fitView(doc: Doc) {
+export function fitView(doc: Doc) {
   const el = typeof document !== 'undefined' ? document.querySelector('.wb-canvas') : null;
   const pts = doc.parts.flatMap(p => { const def = getPart(p.type), box = def?.box({ ...def.defaults, ...p.props }); return box ? [[p.x + box.x, p.y + box.y], [p.x + box.x + box.w, p.y + box.y + box.h]] : []; }).concat(doc.parts.flatMap(placedPins).map(p => [p.x, p.y]));
   if (!el || !pts.length) return null;
@@ -174,7 +175,7 @@ class Runner {
     this.send({ type: 'running', running: useBench.getState().running });
     requestAnimationFrame(() => useBench.getState().fit());
     this.unsub = useBench.subscribe((s, prev) => {
-      if (s.doc !== prev.doc) localStorage.setItem(key, JSON.stringify(s.doc));
+      if (s.doc !== prev.doc && !useGuide.getState().playing) localStorage.setItem(key, JSON.stringify(s.doc));
       if (s.running !== prev.running) this.send({ type: 'running', running: s.running });
     });
     const loop = () => { this.raf = requestAnimationFrame(loop); this.flush(); };

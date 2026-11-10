@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { asset } from './paths';
 
-export type Role = 'school' | 'college' | 'maker' | 'teacher';
+export type Role = 'beginner' | 'school' | 'college' | 'maker' | 'teacher';
 export type Goal = 'basics' | 'analog' | 'digital' | 'micro' | 'solar' | 'explore';
 export type Level = 'new' | 'basics' | 'built';
 

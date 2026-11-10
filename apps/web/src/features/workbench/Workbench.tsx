@@ -10,10 +10,11 @@ import { runner, useBench } from './store';
 import { asset } from '@/lib/paths';
 import { MobileWorkbench, useIsPhone } from './Mobile';
 import { BenchTour } from '../onboarding/Tour';
+import { DemoLayer } from './Demo';
 
 const IsoView = dynamic(() => import('./iso/IsoView'), { ssr: false, loading: () => <div className="wb-canvas wb-3d-loading">Loading…</div> });
 
-export function Workbench({ storageKey, initial, dt, side, title, peek, heading }: { storageKey?: string; initial?: () => Doc; dt?: number; side?: ReactNode; title?: ReactNode; peek?: ReactNode; heading?: string } = {}) {
+export function Workbench({ storageKey, initial, dt, side, title, peek, heading }: { storageKey?: string; initial?: () => Doc; dt?: number; side?: ReactNode; title?: ReactNode; peek?: (open: () => void) => ReactNode; heading?: string } = {}) {
   const view3d = useBench(s => s.view3d), phone = useIsPhone();
   useEffect(() => {
     runner.start({ key: storageKey, initial, dt });
@@ -33,10 +34,11 @@ export function Workbench({ storageKey, initial, dt, side, title, peek, heading 
   }, [storageKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tour = !storageKey && <BenchTour phone={phone} />;
-  if (phone) return <>{tour}<MobileWorkbench side={side} peek={peek} heading={heading} /></>;
+  if (phone) return <>{tour}<MobileWorkbench side={side} peek={peek} heading={heading} /><DemoLayer /></>;
   return (
     <div className="wb">
       {tour}
+      <DemoLayer />
       <header className="wb-head"><a href={asset('/')} className="wb-brand"><b>⚡ Electronics Bench</b></a>{title ?? <><a href={asset('/learn/')} className="wb-muted">Lessons</a><a href={asset('/learn/#solar')} className="wb-muted">Solar module</a></>}<Toolbar /><AccountButton /></header>
       <Palette />
       <div className="wb-center">{view3d ? <IsoView /> : <Canvas />}<CodePanel /></div>

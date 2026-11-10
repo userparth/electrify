@@ -16,7 +16,7 @@ if (isset($b['font'])) { if (!in_array($b['font'], EB_FONTS, true)) eb_json(['er
 if (isset($b['profile']) && is_array($b['profile'])) {
   $in = $b['profile'];
   $p = [
-    'role' => in_array($in['role'] ?? null, ['school', 'college', 'maker', 'teacher'], true) ? $in['role'] : null,
+    'role' => in_array($in['role'] ?? null, ['beginner', 'school', 'college', 'maker', 'teacher'], true) ? $in['role'] : null,
     'goals' => array_values(array_intersect((array) ($in['goals'] ?? []), ['basics', 'analog', 'digital', 'micro', 'solar', 'explore'])),
     'level' => in_array($in['level'] ?? null, ['new', 'basics', 'built'], true) ? $in['level'] : null,
     'done' => (bool) ($in['done'] ?? false),
