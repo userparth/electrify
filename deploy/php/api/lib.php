@@ -73,3 +73,65 @@ function eb_class_code(): string {
   for ($i = 0; $i < 6; $i++) $s .= $alphabet[random_int(0, strlen($alphabet) - 1)];
   return $s;
 }
+
+function eb_mail_ready(): bool {
+  $m = eb_config()['mail'] ?? [];
+  return !empty($m['user']) && !empty($m['pass']);
+}
+
+/** Sends one multipart email over SMTPS with AUTH LOGIN; returns false (and logs why) on any failure. */
+function eb_mail(string $to, string $subject, string $text, string $html): bool {
+  $m = eb_config()['mail'] ?? [];
+  if (!eb_mail_ready() || !filter_var($to, FILTER_VALIDATE_EMAIL) || preg_match('/[\r\n]/', $to)) return false;
+  $host = $m['host'] ?? 'smtp.hostinger.com';
+  $fp = @stream_socket_client('ssl://' . $host . ':' . (int) ($m['port'] ?? 465), $errno, $err, 15);
+  if (!$fp) { error_log("eb_mail: connect failed: $err"); return false; }
+  stream_set_timeout($fp, 15);
+  $read = function () use ($fp): string {
+    $out = '';
+    while (($line = fgets($fp, 1024)) !== false) { $out .= $line; if (strlen($line) < 4 || $line[3] === ' ') break; }
+    return $out;
+  };
+  $cmd = function (string $line, string $expect) use ($fp, $read): void {
+    if ($line !== '') fwrite($fp, $line . "\r\n");
+    $reply = $read();
+    if (strncmp($reply, $expect, 3) !== 0) throw new RuntimeException(trim($reply));
+  };
+  $from = $m['from'] ?? $m['user'];
+  $domain = substr(strrchr($from, '@') ?: '@localhost', 1);
+  try {
+    $cmd('', '220');
+    $cmd('EHLO ' . $domain, '250');
+    $cmd('AUTH LOGIN', '334');
+    $cmd(base64_encode($m['user']), '334');
+    $cmd(base64_encode($m['pass']), '235');
+    $cmd("MAIL FROM:<$from>", '250');
+    $cmd("RCPT TO:<$to>", '250');
+    $cmd('DATA', '354');
+    $b = bin2hex(random_bytes(12));
+    $msg = implode("\r\n", [
+      'From: ' . mb_encode_mimeheader($m['from_name'] ?? 'Electronics Bench') . " <$from>",
+      "To: <$to>",
+      'Subject: ' . mb_encode_mimeheader($subject),
+      'Date: ' . date('r'),
+      'Message-ID: <' . bin2hex(random_bytes(10)) . "@$domain>",
+      'MIME-Version: 1.0',
+      "Content-Type: multipart/alternative; boundary=\"$b\"",
+      '',
+      "--$b", 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '', $text,
+      "--$b", 'Content-Type: text/html; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '', $html,
+      "--$b--",
+    ]);
+    // Normalise line endings, then dot-stuff lines that start with "." (RFC 5321 §4.5.2).
+    $msg = preg_replace('/^\./m', '..', str_replace("\n", "\r\n", str_replace("\r\n", "\n", $msg)));
+    $cmd($msg . "\r\n.", '250');
+    // The message is accepted at this point; a failed QUIT must not report it as unsent.
+    try { $cmd('QUIT', '221'); } catch (Throwable) {}
+    return true;
+  } catch (Throwable $e) {
+    error_log('eb_mail: ' . $e->getMessage());
+    return false;
+  } finally {
+    fclose($fp);
+  }
+}

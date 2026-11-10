@@ -9,9 +9,10 @@ export default function Page() {
       <h1>Privacy policy</h1>
       <p><i>Last updated: 10 November 2026</i></p>
       <p>Electronics Bench is a free, open-source electronics-learning website run by Parth Sharma. You can use every lesson and the workbench without an account. Signing in is optional and only used to save your progress and to join a teacher&apos;s class.</p>
-      <h2>What we store when you sign in with Google</h2>
+      <h2>What we store when you sign in</h2>
       <ul>
-        <li>Your Google account ID, email address, name and profile picture URL (the <code>openid email profile</code> scopes). We never see your Google password.</li>
+        <li>With Google: your Google account ID, email address, name and profile picture URL (the <code>openid email profile</code> scopes). We never see your Google password.</li>
+        <li>With an email code: your email address. The 6-digit code is stored only as a hash, works for 10 minutes, and is deleted once used or expired (within a day). If you later use Google with the same email, both become one account.</li>
         <li>Your lesson progress: which steps and quiz questions you completed.</li>
         <li>Classes you create or join, and the lessons a teacher assigns to a class. A teacher can see the name, email and lesson progress of students in their class.</li>
         <li>Your settings (colours, font) and your answers from the welcome steps (student or teacher, what you want to learn, your level), so your recommended path follows you.</li>

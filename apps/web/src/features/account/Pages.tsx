@@ -57,7 +57,7 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
       {!loaded ? <p>Loading…</p>
         : !available ? <p>Accounts aren’t switched on for this server yet. Lessons still save your progress in this browser.</p>
           : !user && under13 ? <p>{t('account.under13')}</p>
-          : !user ? <p><button className="btn on" onClick={signIn}>Sign in with Google</button> to continue.</p>
+          : !user ? <p><button className="btn on" onClick={signIn}>{t('signin.button')}</button> to continue.</p>
             : children}
     </main>
   );

@@ -26,24 +26,36 @@ interface AccountState {
   /** false when the server has no accounts backend (local dev, or not configured yet). */
   available: boolean;
   loaded: boolean;
+  /** Which sign-in methods this server has switched on. */
+  methods: { google: boolean; email: boolean };
+  /** The sign-in dialog. */
+  signInOpen: boolean;
   refresh(): Promise<void>;
   signIn(): void;
+  closeSignIn(): void;
+  signInGoogle(): void;
+  sendCode(email: string): Promise<void>;
+  verifyCode(email: string, code: string): Promise<void>;
   signOut(): Promise<void>;
   /** Permanently removes the account, its progress and its classes on the server. */
   deleteAccount(): Promise<void>;
 }
 
 export const useAccount = create<AccountState>((set, get) => ({
-  user: null, available: false, loaded: false,
+  user: null, available: false, loaded: false, methods: { google: false, email: false }, signInOpen: false,
   async refresh() {
     try {
-      const r = await call<{ user: User | null; configured: boolean }>('me.php');
-      set({ user: r.user, available: r.configured, loaded: true });
+      const r = await call<{ user: User | null; configured: boolean; methods?: { google: boolean; email: boolean } }>('me.php');
+      set({ user: r.user, available: r.configured, loaded: true, methods: r.methods ?? { google: r.configured, email: false } });
       dispatchEvent(new CustomEvent('eb-account', { detail: r.user }));
       if (r.user) await syncProgress();
     } catch { set({ user: null, available: false, loaded: true }); }
   },
-  signIn() { location.href = `${api('auth.php')}?action=start&return=${encodeURIComponent(location.pathname + location.search)}`; },
+  signIn() { set({ signInOpen: true }); },
+  closeSignIn() { set({ signInOpen: false }); },
+  signInGoogle() { location.href = `${api('auth.php')}?action=start&return=${encodeURIComponent(location.pathname + location.search)}`; },
+  async sendCode(email) { await call('email-login.php', { action: 'send', email }); },
+  async verifyCode(email, code) { await call('email-login.php', { action: 'verify', email, code }); set({ signInOpen: false }); await get().refresh(); },
   async signOut() { await call('auth.php?action=logout', {}); set({ user: null }); dispatchEvent(new CustomEvent('eb-account', { detail: null })); },
   async deleteAccount() { await call('account.php', { action: 'delete' }); set({ user: null }); dispatchEvent(new CustomEvent('eb-account', { detail: null })); },
 }));

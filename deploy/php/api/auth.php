@@ -52,13 +52,24 @@ if (isset($_GET['code'], $_GET['state'])) {
   if (!$okIss || ($claims['aud'] ?? '') !== $g['client_id'] || ($claims['exp'] ?? 0) < time() || empty($claims['sub']) || empty($claims['email_verified'])) $fail('claims');
 
   $db = eb_db();
-  $db->prepare('INSERT INTO users (google_sub, email, name, picture, last_login) VALUES (?, ?, ?, ?, NOW())
-    ON DUPLICATE KEY UPDATE email = VALUES(email), name = VALUES(name), picture = VALUES(picture), last_login = NOW()')
-    ->execute([$claims['sub'], $claims['email'], $claims['name'] ?? '', $claims['picture'] ?? '']);
   $q = $db->prepare('SELECT id FROM users WHERE google_sub = ?');
   $q->execute([$claims['sub']]);
+  $id = $q->fetchColumn();
+  // Google verified this email, so an account made earlier with an email code for the same address is the same person.
+  if (!$id) {
+    $q = $db->prepare('SELECT id FROM users WHERE google_sub IS NULL AND LOWER(email) = LOWER(?) ORDER BY id LIMIT 1');
+    $q->execute([$claims['email']]);
+    $id = $q->fetchColumn();
+  }
+  if ($id) $db->prepare('UPDATE users SET google_sub = ?, email = ?, name = ?, picture = ?, last_login = NOW() WHERE id = ?')
+    ->execute([$claims['sub'], $claims['email'], $claims['name'] ?? '', $claims['picture'] ?? '', $id]);
+  else {
+    $db->prepare('INSERT INTO users (google_sub, email, name, picture, last_login) VALUES (?, ?, ?, ?, NOW())')
+      ->execute([$claims['sub'], $claims['email'], $claims['name'] ?? '', $claims['picture'] ?? '']);
+    $id = $db->lastInsertId();
+  }
   session_regenerate_id(true);
-  $_SESSION['uid'] = (int) $q->fetchColumn();
+  $_SESSION['uid'] = (int) $id;
   header('Location: ' . $base . $back);
   exit;
 }
