@@ -143,9 +143,9 @@ export const micro: Module = {
         return doc;
       },
       steps: [
-        { title: 'Upload the sketch', text: 'Click the Arduino, read the code below the bench, then press "Compile & upload". The compiler turns your C++ into machine code for the ATmega328P chip.', check: c => /LED (on|off)/.test(c.serial('arduino-uno')), hint: 'The upload button is in the code panel that opens when the Arduino is selected.' },
-        { title: 'Watch it blink', text: 'The green LED on pin 9 blinks once a second, and the Serial monitor prints "LED on" / "LED off".', check: c => c.glow() > 0.25 },
-        { title: 'Blink faster', text: 'Change both delay(500) lines to delay(100) and upload again. The LED should flash five times faster.', check: c => /delay\(\s*100\s*\)/.test(String(c.prop('arduino-uno', 'code'))) && c.prop('arduino-uno', 'binary') !== '' && /LED (on|off)/.test(c.serial('arduino-uno')), hint: 'Edit the code, then press "Compile & upload" again — the board only runs what was uploaded.' },
+        { title: 'Upload the sketch', text: 'Click the Arduino, read the code below the bench, then press "Compile & upload". The compiler turns your C++ into machine code for the ATmega328P chip.', demo: [{ point: 'arduino-uno#0', say: 'Select the Arduino → Compile & upload' }], check: c => /LED (on|off)/.test(c.serial('arduino-uno')), hint: 'The upload button is in the code panel that opens when the Arduino is selected.' },
+        { title: 'Watch it blink', text: 'The green LED on pin 9 blinks once a second, and the Serial monitor prints "LED on" / "LED off".', demo: [{ point: 'led#0', say: 'Watch this LED blink' }], check: c => c.glow() > 0.25 },
+        { title: 'Blink faster', text: 'Change both delay(500) lines to delay(100) and upload again. The LED should flash five times faster.', demo: [{ point: 'arduino-uno#0', say: 'Code: change both delay(500) to delay(100) → Compile & upload' }], check: c => /delay\(\s*100\s*\)/.test(String(c.prop('arduino-uno', 'code'))) && c.prop('arduino-uno', 'binary') !== '' && /LED (on|off)/.test(c.serial('arduino-uno')), hint: 'Edit the code, then press "Compile & upload" again — the board only runs what was uploaded.' },
       ],
       tryIt: [['Remove the 220 Ω resistor and wire the LED straight to pin 9', 'the LED (and in real life the pin) is overloaded. An Arduino pin should give at most ~20 mA.'], ['Change pinMode(9, …) to pin 10 but leave the wire on 9', 'nothing blinks: the code and the wiring must use the same pin number.']],
       quiz: [
@@ -167,9 +167,9 @@ export const micro: Module = {
         return doc;
       },
       steps: [
-        { title: 'Upload the sketch', text: 'Select the Arduino and press "Compile & upload". The Serial monitor prints "released".', check: c => c.serial('arduino-uno').includes('released') },
-        { title: 'Press the button', text: 'Press and hold the push button. Pin 2 is pulled to GND, digitalRead returns LOW, and the LED on pin 8 lights.', check: c => c.prop('button', 'pressed') === true && c.glow() > 0.25, hint: 'Hold the mouse button down on the push button.' },
-        { title: 'Invert it', text: 'Change the code so the LED is ON when the button is NOT pressed (swap HIGH and LOW in the digitalWrite line), upload, and let go of the button.', check: c => c.prop('button', 'pressed') !== true && c.glow() > 0.25 && c.prop('arduino-uno', 'binary') !== '' },
+        { title: 'Upload the sketch', text: 'Select the Arduino and press "Compile & upload". The Serial monitor prints "released".', demo: [{ point: 'arduino-uno#0', say: 'Select the Arduino → Compile & upload' }], check: c => c.serial('arduino-uno').includes('released') },
+        { title: 'Press the button', text: 'Press and hold the push button. Pin 2 is pulled to GND, digitalRead returns LOW, and the LED on pin 8 lights.', demo: [{ set: 'button#0', props: { pressed: true }, say: 'Press and hold the button' }], check: c => c.prop('button', 'pressed') === true && c.glow() > 0.25, hint: 'Hold the mouse button down on the push button.' },
+        { title: 'Invert it', text: 'Change the code so the LED is ON when the button is NOT pressed (swap HIGH and LOW in the digitalWrite line), upload, and let go of the button.', demo: [{ point: 'arduino-uno#0', say: 'Code: swap HIGH and LOW in the digitalWrite line → Compile & upload' }, { set: 'button#0', props: { pressed: false }, say: 'Let go of the button' }], check: c => c.prop('button', 'pressed') !== true && c.glow() > 0.25 && c.prop('arduino-uno', 'binary') !== '' },
       ],
       tryIt: [['Change INPUT_PULLUP to INPUT', 'the pin floats when the button is open and reads random values — that is why the pull-up exists.']],
       quiz: [
@@ -188,8 +188,8 @@ export const micro: Module = {
         return doc;
       },
       steps: [
-        { title: 'Upload the fade', text: 'Upload the sketch. The LED breathes in and out, and the Serial monitor shows brightness going 0, 5, 10 … 255 and back.', check: c => /brightness: \d+/.test(c.serial('arduino-uno')) },
-        { title: 'Fade faster', text: 'Change step from 5 to 15 and upload again. The numbers now jump 0, 15, 30 …', check: c => { const s = c.serial('arduino-uno'); return /brightness: 30\r?\n/.test(s) && !/brightness: 5\r?\n/.test(s); }, hint: 'Look for "int step = 5;" near the top.' },
+        { title: 'Upload the fade', text: 'Upload the sketch. The LED breathes in and out, and the Serial monitor shows brightness going 0, 5, 10 … 255 and back.', demo: [{ point: 'arduino-uno#0', say: 'Select the Arduino → Compile & upload' }], check: c => /brightness: \d+/.test(c.serial('arduino-uno')) },
+        { title: 'Fade faster', text: 'Change step from 5 to 15 and upload again. The numbers now jump 0, 15, 30 …', demo: [{ point: 'arduino-uno#0', say: 'Code: change step = 5 to step = 15 → Compile & upload' }], check: c => { const s = c.serial('arduino-uno'); return /brightness: 30\r?\n/.test(s) && !/brightness: 5\r?\n/.test(s); }, hint: 'Look for "int step = 5;" near the top.' },
         { title: 'See the PWM on a scope (optional)', text: 'Drag an oscilloscope onto the bench and connect CH1 to pin 9 and GND to GND: the pin is a square wave whose width changes with brightness.' },
       ],
       tryIt: [['Move the LED to pin 8 (not a ~ PWM pin) and set LED = 8', 'analogWrite on a non-PWM pin can only switch fully on or off.']],
@@ -209,10 +209,10 @@ export const micro: Module = {
         return doc;
       },
       steps: [
-        { title: 'Upload and read', text: 'Upload the sketch. The Serial monitor prints A0 = … ten times a second.', check: c => /A0 = \d+/.test(c.serial('arduino-uno')) },
-        { title: 'Turn it all the way up', text: 'Turn the knob fully clockwise (drag it, scroll on it, or set Knob position to 1). The wiper reaches 5 V and the reading goes above 1000.', check: c => lastNum(c.serial('arduino-uno'), /A0 = (\d+)/g) > 1000 },
-        { title: 'Find the middle', text: 'Turn the knob to the middle. You should read about 512 — half of 1023, because the wiper is at 2.5 V.', check: c => { const n = lastNum(c.serial('arduino-uno'), /A0 = (\d+)/g); return n > 420 && n < 600; } },
-        { title: 'Print volts', text: 'Add a line that prints the voltage: Serial.print("Volts = "); Serial.println(value * 5.0 / 1023.0); then upload.', check: c => /Volts = \d\.\d\d/.test(c.serial('arduino-uno')), hint: 'Put it inside loop(), after the analogRead line.' },
+        { title: 'Upload and read', text: 'Upload the sketch. The Serial monitor prints A0 = … ten times a second.', demo: [{ point: 'arduino-uno#0', say: 'Select the Arduino → Compile & upload' }], check: c => /A0 = \d+/.test(c.serial('arduino-uno')) },
+        { title: 'Turn it all the way up', text: 'Turn the knob fully clockwise (drag it, scroll on it, or set Knob position to 1). The wiper reaches 5 V and the reading goes above 1000.', demo: [{ set: 'pot#0', props: { position: 1 }, say: 'Turn the knob all the way up' }], check: c => lastNum(c.serial('arduino-uno'), /A0 = (\d+)/g) > 1000 },
+        { title: 'Find the middle', text: 'Turn the knob to the middle. You should read about 512 — half of 1023, because the wiper is at 2.5 V.', demo: [{ set: 'pot#0', props: { position: 0.5 }, say: 'Turn the knob to the middle' }], check: c => { const n = lastNum(c.serial('arduino-uno'), /A0 = (\d+)/g); return n > 420 && n < 600; } },
+        { title: 'Print volts', text: 'Add a line that prints the voltage: Serial.print("Volts = "); Serial.println(value * 5.0 / 1023.0); then upload.', demo: [{ point: 'arduino-uno#0', say: 'Code: add the two Volts lines after the A0 print → Compile & upload' }], check: c => /Volts = \d\.\d\d/.test(c.serial('arduino-uno')), hint: 'Put it inside loop(), after the analogRead line.' },
       ],
       tryIt: [['Wire the potentiometer ends to 5V and VIN instead of 5V and GND', 'the wiper never gets near 0 V, so the reading never goes low.']],
       quiz: [
@@ -232,9 +232,9 @@ export const micro: Module = {
         return doc;
       },
       steps: [
-        { title: 'Run the program', text: 'Select the Pico and press ▶ Run. MicroPython starts the first time (a moment), then the Serial monitor prints "blink 0 …".', check: c => /blink \d+/.test(c.serial('pico')) },
-        { title: 'Watch the LEDs', text: 'The blue LED on GP15 (physical pin 20) and the little LED on the Pico flash together.', check: c => c.glow() > 0.2 || c.read('pico', 'led') === true },
-        { title: 'Blink faster', text: 'Change DELAY = 0.5 to DELAY = 0.1 and press Run again.', check: c => c.serial('pico').includes('delay 0.1') },
+        { title: 'Run the program', text: 'Select the Pico and press ▶ Run. MicroPython starts the first time (a moment), then the Serial monitor prints "blink 0 …".', demo: [{ point: 'pico#0', say: 'Select the Pico → ▶ Run' }], check: c => /blink \d+/.test(c.serial('pico')) },
+        { title: 'Watch the LEDs', text: 'The blue LED on GP15 (physical pin 20) and the little LED on the Pico flash together.', demo: [{ point: 'led#0', say: 'Watch this LED and the one on the Pico' }], check: c => c.glow() > 0.2 || c.read('pico', 'led') === true },
+        { title: 'Blink faster', text: 'Change DELAY = 0.5 to DELAY = 0.1 and press Run again.', demo: [{ point: 'pico#0', say: 'Code: change DELAY = 0.5 to DELAY = 0.1 → ▶ Run' }], check: c => c.serial('pico').includes('delay 0.1') },
       ],
       tryIt: [['Change Pin(15 …) to Pin(14 …) without moving the wire', 'the LED stays dark: GP14 is physical pin 19, not 20. GP numbers and physical pin numbers are different.']],
       quiz: [
@@ -253,10 +253,10 @@ export const micro: Module = {
         return doc;
       },
       steps: [
-        { title: 'Run it', text: 'Press ▶ Run. The Serial monitor prints "adc …" five times a second.', check: c => /adc \d+/.test(c.serial('pico')) },
-        { title: 'Turn it all the way up', text: 'Turn the knob fully clockwise: the wiper is at 3.3 V and the reading is above 60000.', check: c => lastNum(c.serial('pico'), /adc (\d+)/g) > 60000 },
-        { title: 'Find the middle', text: 'Turn the knob to the middle: about 32768, half of 65535.', check: c => { const n = lastNum(c.serial('pico'), /adc (\d+)/g); return n > 24000 && n < 42000; } },
-        { title: 'Print volts', text: 'Change the print line to print("volts", value * 3.3 / 65535) and press Run again.', check: c => /volts \d\.\d+/.test(c.serial('pico')) },
+        { title: 'Run it', text: 'Press ▶ Run. The Serial monitor prints "adc …" five times a second.', demo: [{ point: 'pico#0', say: 'Select the Pico → ▶ Run' }], check: c => /adc \d+/.test(c.serial('pico')) },
+        { title: 'Turn it all the way up', text: 'Turn the knob fully clockwise: the wiper is at 3.3 V and the reading is above 60000.', demo: [{ set: 'pot#0', props: { position: 1 }, say: 'Turn the knob all the way up' }], check: c => lastNum(c.serial('pico'), /adc (\d+)/g) > 60000 },
+        { title: 'Find the middle', text: 'Turn the knob to the middle: about 32768, half of 65535.', demo: [{ set: 'pot#0', props: { position: 0.5 }, say: 'Turn the knob to the middle' }], check: c => { const n = lastNum(c.serial('pico'), /adc (\d+)/g); return n > 24000 && n < 42000; } },
+        { title: 'Print volts', text: 'Change the print line to print("volts", value * 3.3 / 65535) and press Run again.', demo: [{ point: 'pico#0', say: 'Code: change the print line to print("volts", value * 3.3 / 65535) → ▶ Run' }], check: c => /volts \d\.\d+/.test(c.serial('pico')) },
       ],
       tryIt: [['Wire the potentiometer to VBUS (5 V) instead of 3V3(OUT)', 'that puts more than 3.3 V on an ADC pin — on a real Pico this can damage it.']],
       quiz: [
@@ -275,13 +275,13 @@ export const micro: Module = {
         return doc;
       },
       steps: [
-        { title: 'Wire the LED', text: 'Wire GPIO17 (header pin 11) → resistor → LED long leg (anode), and the LED short leg (cathode) → a GND pin (e.g. pin 6). Hover header pins to see their names.', check: c => {
+        { title: 'Wire the LED', text: 'Wire GPIO17 (header pin 11) → resistor → LED long leg (anode), and the LED short leg (cathode) → a GND pin (e.g. pin 6). Hover header pins to see their names.', demo: [{ wire: ['rpi4#0:11', 'resistor#0:1'], color: '#f3c33b' }, { wire: ['resistor#0:2', 'led#0:A'], color: '#f3c33b' }, { wire: ['led#0:K', 'rpi4#0:6'], color: '#1d1d1b' }], check: c => {
           const pi = (n: string) => c.pin('rpi4', n), r1 = c.pin('resistor', '1'), r2 = c.pin('resistor', '2'), a = c.pin('led', 'A');
           const series = (c.joined(pi('11'), r1) && c.joined(r2, a)) || (c.joined(pi('11'), r2) && c.joined(r1, a));
           return series && c.joined(c.pin('led', 'K'), pi('6'));
         }, hint: 'Pin 11 is the 6th pin of the inner row; all GND pins are joined, so any of them works.' },
         { title: 'Run the program', text: 'Select the Pi and press ▶ Run. Python loads in your browser (a few seconds the first time), then the LED blinks and the Serial monitor prints "on" / "off".' },
-        { title: 'Use another pin', text: 'Move the wire from pin 11 to pin 13 (GPIO27), change LED(17) to LED(27) and Run again.', check: c => either(c, c.pin('rpi4', '13'), c.pin('resistor', '1'), c.pin('resistor', '2')) },
+        { title: 'Use another pin', text: 'Move the wire from pin 11 to pin 13 (GPIO27), change LED(17) to LED(27) and Run again.', demo: [{ unwire: ['rpi4#0:11', 'resistor#0:1'] }, { wire: ['rpi4#0:13', 'resistor#0:1'], color: '#f3c33b' }, { point: 'rpi4#0', say: 'Code: change LED(17) to LED(27) → ▶ Run' }], check: c => either(c, c.pin('rpi4', '13'), c.pin('resistor', '1'), c.pin('resistor', '2')) },
       ],
       tryIt: [['Wire the 5V pin (pin 2) to a GPIO', 'the board flags over-voltage: a real Pi’s GPIO pins are 3.3 V only and 5 V can destroy them.'], ['Use LED(11)', 'gpiozero uses GPIO numbers, not header pin numbers — GPIO11 is a different pin.']],
       quiz: [
@@ -302,12 +302,12 @@ export const micro: Module = {
         return doc;
       },
       steps: [
-        { title: 'Wire the button', text: 'Wire one side of the button to GPIO27 (header pin 13) and the other side to GND (e.g. pin 14).', check: c => {
+        { title: 'Wire the button', text: 'Wire one side of the button to GPIO27 (header pin 13) and the other side to GND (e.g. pin 14).', demo: [{ wire: ['rpi4#0:13', 'button#0:1a'], color: '#f3c33b' }, { wire: ['button#0:2a', 'rpi4#0:14'], color: '#1d1d1b' }], check: c => {
           const p13 = c.pin('rpi4', '13'), gnd = c.pin('rpi4', '6'), a = c.pin('button', '1a'), b = c.pin('button', '2a');
           return (c.joined(p13, a) && c.joined(b, gnd)) || (c.joined(p13, b) && c.joined(a, gnd));
         } },
         { title: 'Run the program', text: 'Select the Pi and press ▶ Run. The Serial monitor says "press the button".' },
-        { title: 'Press it', text: 'Press and hold the button: GPIO27 is pulled to 0 V and the LED turns on. Let go and it turns off.', check: c => c.prop('button', 'pressed') === true && (c.v(c.pin('rpi4', '13')) ?? 9) < 0.5 },
+        { title: 'Press it', text: 'Press and hold the button: GPIO27 is pulled to 0 V and the LED turns on. Let go and it turns off.', demo: [{ set: 'button#0', props: { pressed: true }, say: 'Press and hold the button' }], check: c => c.prop('button', 'pressed') === true && (c.v(c.pin('rpi4', '13')) ?? 9) < 0.5 },
       ],
       tryIt: [['Wire the button between pin 13 and the 3.3 V pin instead of GND', 'with the pull-up already holding it HIGH, pressing changes nothing.']],
       quiz: [

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { playLesson } from '@/features/learn/headless';
+import { playDemos, playLesson } from '@/features/learn/headless';
 import type { Doc, Inst } from '@/features/workbench/model';
 import { analog } from './analog';
 
@@ -91,5 +91,11 @@ describe('analog module', () => {
       },
       d => { P(d, 'battery').props.volts = '3'; },
     ])).toBe(-1);
+  });
+
+  describe('Show me demos', () => {
+    for (const [id, seconds] of [['capacitor-rc', 0.012], ['diodes', 0.3], ['bjt-switch', 0.3], ['mosfet', 0.3], ['night-light', 0.3], ['op-amp', 0.3], ['regulator', 0.3]] as const) {
+      it(id, () => expect(playDemos(L(id), seconds)).toBe(-1));
+    }
   });
 });

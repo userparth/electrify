@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { playLesson } from '@/features/learn/headless';
+import { playDemos, playLesson } from '@/features/learn/headless';
 import type { Doc } from '@/features/workbench/model';
 import { digital } from './digital';
 
@@ -108,4 +108,8 @@ describe('digital checks are not free', () => {
   for (const l of digital.lessons) it(`${l.id} does not pass without the student`, () => {
     expect(playLesson(l, [])).not.toBe(-1);
   });
+});
+
+describe('digital Show me demos', () => {
+  for (const l of digital.lessons) it(`${l.id} is solved by its demos`, () => expect(playDemos(l)).toBe(-1));
 });

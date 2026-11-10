@@ -1,5 +1,6 @@
 import type { Live } from '@eb/parts';
 import { buildCircuit, type Doc } from '../workbench/model';
+import { applyAct } from '../workbench/guide';
 import type { Check, Lesson } from './types';
 
 /** Runs a circuit without the browser and exposes the same Check API the lesson player uses. */
@@ -38,6 +39,21 @@ export function playLesson(lesson: Lesson, solve: (((doc: Doc) => void) | undefi
   for (let i = 0; i < lesson.steps.length; i++) {
     solve[i]?.(doc);
     const s = lesson.steps[i]!;
+    if (s.check && !s.check(simulate(doc, seconds, lesson.dt ?? 1e-4))) return i;
+  }
+  return -1;
+}
+
+/**
+ * Plays every step's "Show me" demo in order and checks the step after it. `extra[i]` finishes a step the demo
+ * only points at (code edits). Returns the index of the first failing step, or -1.
+ */
+export function playDemos(lesson: Lesson, seconds = 0.3, extra: Record<number, (doc: Doc) => void> = {}): number {
+  let doc = lesson.build();
+  for (let i = 0; i < lesson.steps.length; i++) {
+    const s = lesson.steps[i]!;
+    for (const a of s.demo ?? []) { const net = buildCircuit(doc, lesson.dt ?? 1e-4).net; doc = applyAct(doc, a, (x, y) => !!net.get(x) && net.get(x) === net.get(y)); }
+    if (extra[i]) { doc = structuredClone(doc); extra[i]!(doc); }
     if (s.check && !s.check(simulate(doc, seconds, lesson.dt ?? 1e-4))) return i;
   }
   return -1;

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { playLesson } from '@/features/learn/headless';
+import { playDemos, playLesson } from '@/features/learn/headless';
 import type { Doc } from '@/features/workbench/model';
 import { BLINK_PICO, BLINK_UNO, BUTTON_UNO, FADE_UNO, POT_UNO, ADC_PICO, lastNum, micro } from './micro';
 
@@ -63,6 +63,13 @@ describe.skipIf(!hasCli)('micro · Arduino', () => {
       d => upload(d, 'potVolts'),
     ])).toBe(-1);
   });
+
+  it('Show me demos solve every Arduino lesson', () => {
+    expect(playDemos(L('uno-blink'), 0.3, { 0: d => upload(d, 'blink'), 2: d => upload(d, 'blinkFast') })).toBe(-1);
+    expect(playDemos(L('uno-button'), 0.3, { 0: d => upload(d, 'button'), 2: d => upload(d, 'buttonInv') })).toBe(-1);
+    expect(playDemos(L('uno-fade'), 0.3, { 0: d => upload(d, 'fade'), 1: d => upload(d, 'fadeFast') })).toBe(-1);
+    expect(playDemos(L('uno-analog'), 0.3, { 0: d => upload(d, 'pot'), 3: d => upload(d, 'potVolts') })).toBe(-1);
+  });
 });
 
 const FW = join(__dirname, '../../public/firmware');
@@ -92,6 +99,11 @@ describe.skipIf(!haveFw)('micro · Pico', () => {
       d => run(d, ADC_PICO.replace('print("adc", value)', 'print("volts", value * 3.3 / 65535)')),
     ], 0.5)).toBe(-1);
   }, 120_000);
+
+  it('Show me demos solve both Pico lessons', () => {
+    expect(playDemos(L('pico-blink'), 0.4, { 0: d => run(d), 1: d => run(d), 2: d => run(d, BLINK_PICO.replace('DELAY = 0.5', 'DELAY = 0.1')) })).toBe(-1);
+    expect(playDemos(L('pico-adc'), 0.5, { 0: d => run(d), 1: d => run(d), 2: d => run(d), 3: d => run(d, ADC_PICO.replace('print("adc", value)', 'print("volts", value * 3.3 / 65535)')) })).toBe(-1);
+  }, 240_000);
 });
 
 describe('micro · Raspberry Pi 4 wiring', () => {
@@ -109,6 +121,11 @@ describe('micro · Raspberry Pi 4 wiring', () => {
       undefined,
       d => { byType(d, 'button').props.pressed = true; },
     ])).toBe(-1);
+  });
+
+  it('Show me demos solve both Pi lessons', () => {
+    expect(playDemos(L('pi-led'))).toBe(-1);
+    expect(playDemos(L('pi-button'))).toBe(-1);
   });
 
   it('an unwired LED does not pass the first step', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { playLesson } from '@/features/learn/headless';
+import { playDemos, playLesson } from '@/features/learn/headless';
 import type { Doc } from '@/features/workbench/model';
 import { solar } from './solar';
 
@@ -92,4 +92,6 @@ describe('solar module', () => {
     d => { one(d, 'inverter').props.watts = 50; },
     d => { one(d, 'inverter').props.watts = 350; },
   ]));
+
+  for (const l of solar.lessons) it(`Show me demos solve ${l.id}`, () => expect(playDemos(l, 0.5)).toBe(-1));
 });

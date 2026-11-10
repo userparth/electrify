@@ -8,7 +8,10 @@ export type Act =
   | { add: string; x: number; y: number; props?: Props; rot?: Inst['rot'] }
   | { wire: [Ref, Ref]; color?: string }
   | { unwire: [Ref, Ref] }
-  | { set: string; props: Props; say?: string };
+  | { set: string; props: Props; say?: string }
+  | { remove: string }
+  /** Shows the student where to look without changing anything, e.g. for code edits. */
+  | { point: Ref; say: string };
 
 export interface Hand { x: number; y: number; down: boolean; carry?: string; ms: number }
 interface GuideState {
@@ -105,6 +108,11 @@ export function applyAct(doc: Doc, a: Act, joined: (a: string, b: string) => boo
     return { ...doc, wires: [...doc.wires, { id: uid('w'), a: r[0], b: r[1], color: a.color ?? '#d6452f' }] };
   }
   if ('unwire' in a) { const w = findWire(doc, a.unwire, joined); return w ? { ...doc, wires: doc.wires.filter(x => x !== w) } : doc; }
+  if ('point' in a) return doc;
+  if ('remove' in a) {
+    const inst = partRef(doc, a.remove);
+    return inst ? { parts: doc.parts.filter(p => p !== inst), wires: doc.wires.filter(w => !w.a.startsWith(inst.id + ':') && !w.b.startsWith(inst.id + ':')) } : doc;
+  }
   const inst = partRef(doc, a.set);
   return inst ? { ...doc, parts: doc.parts.map(p => p === inst ? { ...p, props: { ...p.props, ...a.props } } : p) } : doc;
 }

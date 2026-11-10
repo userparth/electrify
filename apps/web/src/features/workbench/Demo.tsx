@@ -1,7 +1,7 @@
 'use client';
 import { GRID, getPart } from '@eb/parts';
 import { t } from '@/lib/i18n';
-import { actsFor, applyAct, findWire, partRef, pinPos, resolveWire, useGuide, type Act } from './guide';
+import { actsFor, applyAct, findWire, partRef, pinPos, resolve, resolveWire, useGuide, type Act } from './guide';
 import type { Doc } from './model';
 import { fitView, runner, useBench } from './store';
 
@@ -31,6 +31,13 @@ async function moveHand(p: { x: number; y: number }, ms: number, extra: { down?:
 }
 const press = (down: boolean) => useGuide.setState(s => ({ hand: s.hand && { ...s.hand, down, ms: 120 } }));
 
+function partCenter(doc: Doc, ref: string) {
+  const inst = partRef(doc, ref), def = inst && getPart(inst.type);
+  if (!inst || !def) return null;
+  const box = def.box({ ...def.defaults, ...inst.props });
+  return toScreen(inst.x + box.x + box.w / 2, inst.y + box.y + box.h / 2);
+}
+
 function commit(doc: Doc, a: Act) {
   const next = applyAct(doc, a, joined);
   if (next !== doc) { useBench.setState({ doc: next, sel: null }); runner.rebuild(); }
@@ -58,6 +65,13 @@ async function step(a: Act) {
     if (!w || !pa || !pb) return;
     await moveHand(toScreen((pa.x + pb.x) / 2, (pa.y + pb.y) / 2), 550); press(true); await wait(180);
     commit(doc, a); press(false); await wait(350);
+  } else if ('remove' in a || 'point' in a) {
+    const ref = 'remove' in a ? a.remove : a.point, at = ref.includes(':') ? resolve(doc, ref) : null, pin = at && pinPos(doc, at);
+    const c = pin ? toScreen(pin.x, pin.y) : partCenter(doc, ref);
+    if (!c) return;
+    await moveHand(c, 550); press(true); await wait(180); press(false);
+    if ('point' in a) { useGuide.setState({ bubble: { x: c.x, y: c.y - 30, text: a.say } }); await wait(2600); useGuide.setState({ bubble: null }); }
+    else { commit(doc, a); await wait(350); }
   } else {
     const inst = partRef(doc, a.set), def = inst && getPart(inst.type);
     if (!inst || !def) return;
