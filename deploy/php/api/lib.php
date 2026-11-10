@@ -126,7 +126,7 @@ function eb_mail(string $to, string $subject, string $text, string $html): bool 
     $msg = preg_replace('/^\./m', '..', str_replace("\n", "\r\n", str_replace("\r\n", "\n", $msg)));
     $cmd($msg . "\r\n.", '250');
     // The message is accepted at this point; a failed QUIT must not report it as unsent.
-    try { $cmd('QUIT', '221'); } catch (Throwable) {}
+    try { $cmd('QUIT', '221'); } catch (Throwable $_) {}
     return true;
   } catch (Throwable $e) {
     error_log('eb_mail: ' . $e->getMessage());
