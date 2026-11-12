@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
   partialPrefetching: !isStatic,
   env: {
     NEXT_PUBLIC_BASE_PATH: basePath,
+    NEXT_PUBLIC_REPORT_URL: isStatic ? `${basePath}/api/log.php` : "",
     NEXT_PUBLIC_COMPILE_URL: isStatic ? `${basePath}/api/compile.php` : "/api/compile",
   },
   ...(isStatic

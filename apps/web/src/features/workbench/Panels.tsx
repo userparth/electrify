@@ -21,7 +21,7 @@ export function addAtCenter(type: string) {
   return st.addPart(type, Math.round((w / 2 - view.x) / view.zoom / 12), Math.round((h / 2 - view.y) / view.zoom / 12));
 }
 
-export function Palette({ onPick }: { onPick?: (type: string) => void } = {}) {
+export function Palette({ onPick, only }: { onPick?: (type: string) => void; only?: string[] } = {}) {
   const [q, setQ] = useState('');
   const add = (type: string) => { addAtCenter(type); onPick?.(type); };
   const list = PARTS.filter(p => !q || `${p.name} ${p.blurb} ${p.type}`.toLowerCase().includes(q.toLowerCase()));
@@ -30,6 +30,12 @@ export function Palette({ onPick }: { onPick?: (type: string) => void } = {}) {
     <div key={p.type} data-type={p.type} className={`wb-pal ${glow ? 'glow' : ''}`} draggable onDragStart={e => { e.dataTransfer.setData('text/eb-part', p.type); e.dataTransfer.effectAllowed = 'copy'; }} onDoubleClick={() => add(p.type)} onClick={onPick ? () => add(p.type) : undefined} title={onPick ? 'Tap to add' : 'Drag onto the bench, or double-click'}>
       <b>{p.name}</b><small>{p.blurb}</small>
     </div>
+  );
+  if (only) return (
+    <aside className="wb-palette tray">
+      <div className="wb-cat">{t('quest.tray')}</div>
+      {only.length ? PARTS.filter(p => only.includes(p.type)).map(p => item(p, need.includes(p.type))) : <div className="wb-tray-empty">{t('quest.noParts')}</div>}
+    </aside>
   );
   return (
     <aside className="wb-palette">

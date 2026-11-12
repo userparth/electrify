@@ -12,6 +12,22 @@ function eb_config(): array {
   return $c;
 }
 
+/** Appends one line to the server's error log, kept outside the web folder and rotated at 1 MB. */
+function eb_log(string $kind, string $msg): void {
+  $dir = (getenv('EB_TOOLS') ?: EB_TOOLS) . '/logs';
+  if (!is_dir($dir) && !@mkdir($dir, 0700, true)) { error_log("eb $kind: $msg"); return; }
+  $file = "$dir/errors.log";
+  if (@filesize($file) > 1 << 20) @rename($file, "$file.1");
+  $line = json_encode(['t' => gmdate('c'), 'kind' => $kind, 'msg' => mb_substr($msg, 0, 2000), 'url' => $_SERVER['REQUEST_URI'] ?? '']);
+  @file_put_contents($file, $line . "\n", FILE_APPEND | LOCK_EX);
+}
+
+set_exception_handler(function (Throwable $e) {
+  eb_log('php', get_class($e) . ': ' . $e->getMessage() . ' at ' . basename($e->getFile()) . ':' . $e->getLine());
+  if (PHP_SAPI === 'cli') { fwrite(STDERR, $e->getMessage() . "\n"); exit(1); }
+  eb_json(['error' => 'Something went wrong on the server. Try again.'], 500);
+});
+
 function eb_json($body, int $status = 200): never {
   http_response_code($status);
   header('Content-Type: application/json');
@@ -85,7 +101,7 @@ function eb_mail(string $to, string $subject, string $text, string $html): bool 
   if (!eb_mail_ready() || !filter_var($to, FILTER_VALIDATE_EMAIL) || preg_match('/[\r\n]/', $to)) return false;
   $host = $m['host'] ?? 'smtp.hostinger.com';
   $fp = @stream_socket_client('ssl://' . $host . ':' . (int) ($m['port'] ?? 465), $errno, $err, 15);
-  if (!$fp) { error_log("eb_mail: connect failed: $err"); return false; }
+  if (!$fp) { eb_log('mail', "connect failed: $err"); return false; }
   stream_set_timeout($fp, 15);
   $read = function () use ($fp): string {
     $out = '';
@@ -129,7 +145,7 @@ function eb_mail(string $to, string $subject, string $text, string $html): bool 
     try { $cmd('QUIT', '221'); } catch (Throwable $_) {}
     return true;
   } catch (Throwable $e) {
-    error_log('eb_mail: ' . $e->getMessage());
+    eb_log('mail', $e->getMessage());
     return false;
   } finally {
     fclose($fp);

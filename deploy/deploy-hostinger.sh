@@ -27,4 +27,5 @@ sed "s|__BASE__|$EB_BASE_PATH|" deploy/htaccess > apps/web/out/.htaccess
 
 "${SSH[@]}" "$EB_DEPLOY_HOST" "mkdir -p '$EB_DEPLOY_DIR'"
 rsync -az --delete -e "ssh -i $EB_DEPLOY_KEY -p $EB_DEPLOY_PORT -o BatchMode=yes" apps/web/out/ "$EB_DEPLOY_HOST:$EB_DEPLOY_DIR/"
+sed "s|__TOOLS__|$EB_TOOLS|" deploy/backup.sh | "${SSH[@]}" "$EB_DEPLOY_HOST" "cat > '$EB_TOOLS/backup.sh' && chmod 700 '$EB_TOOLS/backup.sh'"
 echo "Deployed to $EB_DEPLOY_HOST:$EB_DEPLOY_DIR"

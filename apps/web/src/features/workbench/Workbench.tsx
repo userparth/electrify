@@ -14,8 +14,9 @@ import { DemoLayer } from './Demo';
 
 const IsoView = dynamic(() => import('./iso/IsoView'), { ssr: false, loading: () => <div className="wb-canvas wb-3d-loading">Loading…</div> });
 
-export function Workbench({ storageKey, initial, dt, side, title, peek, heading }: { storageKey?: string; initial?: () => Doc; dt?: number; side?: ReactNode; title?: ReactNode; peek?: (open: () => void) => ReactNode; heading?: string } = {}) {
-  const view3d = useBench(s => s.view3d), phone = useIsPhone();
+/** `tray` turns on puzzle mode: only those parts, 2D only, no menus. */
+export function Workbench({ storageKey, initial, dt, side, title, peek, heading, tray }: { storageKey?: string; initial?: () => Doc; dt?: number; side?: ReactNode; title?: ReactNode; peek?: (open: () => void) => ReactNode; heading?: string; tray?: string[] } = {}) {
+  const view3d = useBench(s => s.view3d) && !tray, phone = useIsPhone();
   useEffect(() => {
     runner.start({ key: storageKey, initial, dt });
     const key = (e: KeyboardEvent) => {
@@ -34,7 +35,16 @@ export function Workbench({ storageKey, initial, dt, side, title, peek, heading 
   }, [storageKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tour = !storageKey && <BenchTour phone={phone} />;
-  if (phone) return <>{tour}<MobileWorkbench side={side} peek={peek} heading={heading} /><DemoLayer /></>;
+  if (phone) return <>{tour}<MobileWorkbench side={side} peek={peek} heading={heading} tray={tray} /><DemoLayer /></>;
+  if (tray) return (
+    <div className="wb puzzle">
+      <DemoLayer />
+      <header className="wb-head"><a href={asset('/')} className="wb-brand"><b>⚡ Electronics Bench</b></a>{title}<span className="wb-grow" /><AccountButton /></header>
+      <Palette only={tray} />
+      <div className="wb-center"><Canvas /></div>
+      <aside className="wb-side">{side}</aside>
+    </div>
+  );
   return (
     <div className="wb">
       {tour}

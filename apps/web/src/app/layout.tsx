@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Atkinson_Hyperlegible_Mono, Atkinson_Hyperlegible_Next, Figtree, Geist_Mono, IBM_Plex_Mono, IBM_Plex_Sans, Inter, JetBrains_Mono } from 'next/font/google';
 import { EARLY_SCRIPT } from '@/lib/settings-core';
+import { REPORT_SCRIPT } from '@/lib/report';
 import { OnboardingGate } from '@/features/onboarding/Onboarding';
 import { SignInDialog } from '@/features/account/SignIn';
 import './globals.css';
@@ -22,7 +23,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-theme="paper" data-font="atkinson" suppressHydrationWarning className={[atk, atkm, inter, jb, plex, plexm, fig, geistm].map(f => f.variable).join(' ')}>
-      <head><script dangerouslySetInnerHTML={{ __html: EARLY_SCRIPT }} /></head>
+      <head>{REPORT_SCRIPT && <script dangerouslySetInnerHTML={{ __html: REPORT_SCRIPT }} />}<script dangerouslySetInnerHTML={{ __html: EARLY_SCRIPT }} /></head>
       <body>{children}<OnboardingGate /><SignInDialog /></body>
     </html>
   );

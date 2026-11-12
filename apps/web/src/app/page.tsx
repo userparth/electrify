@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { asset } from '@/lib/paths';
 import { AccountButton } from '@/features/account/AccountButton';
+import { t } from '@/lib/i18n';
 
 const MODULES = [
   { href: '/learn', title: 'Lessons', text: 'Guided lessons with a live circuit: steps tick themselves when you get them right, with hints, mistakes to try and a quiz.' },
@@ -14,6 +15,7 @@ export default function Home() {
       <div className="acct-top"><span /><AccountButton /></div>
       <h1>⚡ Electronics Bench</h1>
       <p>Learn electronics by building, running and breaking circuits on screen — then do it on real hardware.</p>
+      <Link className="home-card home-quest" href="/play" prefetch={false}><span className="qm-icon" aria-hidden>💡</span><span><b>{t('quest.name')} →</b><span>{t('quest.home')}</span></span></Link>
       <div className="home-grid">
         {MODULES.map(m => (
           <Link key={m.href} className="home-card" href={m.href} prefetch={false}>

@@ -15,3 +15,4 @@ apps/web/public/pyodide/
 deploy/.env.deploy
 apps/web/out/
 deploy/.env.deploy.*
+backups/

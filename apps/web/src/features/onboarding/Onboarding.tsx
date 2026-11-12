@@ -103,7 +103,8 @@ export function Onboarding({ onClose }: { onClose(): void }) {
           </ol>
         )}
         <div className="ob-actions">
-          {first && <button className="btn on ob-big" onClick={() => { finish(); router.push(`/learn/${first.module.id}/${first.lesson.id}`); }}>{t('ob.path.start', { title: first.lesson.title })}</button>}
+          {profile.role === 'beginner' && <button className="btn on ob-big" onClick={() => { finish(); router.push('/play'); }}>{t('ob.path.start', { title: t('quest.name') })}</button>}
+          {first && <button className={`btn ${profile.role === 'beginner' ? '' : 'on ob-big'}`} onClick={() => { finish(); router.push(`/learn/${first.module.id}/${first.lesson.id}`); }}>{t('ob.path.start', { title: first.lesson.title })}</button>}
           <button className={`btn ${first ? '' : 'on ob-big'}`} onClick={() => { finish(); router.push('/workbench'); }}>{t('ob.path.bench')}</button>
           <Link className="btn" href="/learn" onClick={finish}>{t('ob.path.all')}</Link>
         </div>

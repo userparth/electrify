@@ -89,9 +89,9 @@ After level 12: badge "Spark Master", and "Your first circuit" and the rest of B
 
 | # | Work |
 |---|---|
-| 0 | Quick fixes: step bar always visible, glow on what to touch, "Complete beginner" option, "Show me" ghost-hand demo |
-| 1 | Puzzle board mode + level type + levels 1–3, test with the same students |
-| 2 | Stars, level map, sounds and effects, hints in steps |
+| 0 | ✅ Quick fixes: step bar always visible, glow on what to touch, "Complete beginner" option, "Show me" ghost-hand demo |
+| 1 | ✅ Puzzle board mode + level type + levels 1–3 (`/play`), test with the same students |
+| 2 | Stars, level map and hints in steps ✅; sounds and spark/smoke effects still to do |
 | 3 | Levels 4–12 and the new parts |
 | 4 | XP, badges, streak, share card; connect to the learner home |
 | 5 | Rewrite the start of Basics lesson 1 to be shorter now that Spark Quest teaches the ideas |
@@ -101,3 +101,9 @@ After level 12: badge "Spark Master", and "Your first circuit" and the rest of B
 - Age and level of the students who tested: school (which class) or college?
 - Mascot or no mascot (a small original character guiding the levels)?
 - Sound on by default?
+
+## Status (12 Nov 2026)
+
+Built: `/play` level map and levels 1–3 (`apps/web/src/content/quest.ts`), puzzle mode of the bench (`Workbench tray` prop: only the level's parts, 2D, no menus), win check with a 1.5 s pause so the bulb is seen lighting, stars (★ solve · ★ no hints · ★ no Show me), friendly nudges for near misses (one wire only, switch beside the loop, bulbs in parallel), confetti, "Complete beginner" onboarding starts here, card on the home page.
+
+Not yet: stars sync to the account (localStorage only), sounds, spark/smoke on a short circuit, levels 4–12.

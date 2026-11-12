@@ -9,6 +9,7 @@ import { EventLog, Inspector, Palette, Toolbar } from './Panels';
 import { useBench } from './store';
 import { pending, useGuide } from './guide';
 import { asset } from '@/lib/paths';
+import { t } from '@/lib/i18n';
 
 const IsoView = dynamic(() => import('./iso/IsoView'), { ssr: false, loading: () => <div className="wb-canvas wb-3d-loading">Loading…</div> });
 
@@ -25,9 +26,9 @@ export function useIsPhone() {
 
 type Tab = 'parts' | 'lesson' | 'part' | 'code' | 'log' | 'menu';
 
-export function MobileWorkbench({ side, peek, heading }: { side?: ReactNode; peek?: (open: () => void) => ReactNode; heading?: string }) {
+export function MobileWorkbench({ side, peek, heading, tray }: { side?: ReactNode; peek?: (open: () => void) => ReactNode; heading?: string; tray?: string[] }) {
   const wireMode = useBench(s => s.wireMode), wireFrom = useBench(s => s.wireFrom);
-  const view3d = useBench(s => s.view3d), running = useBench(s => s.running), sel = useBench(s => s.sel), doc = useBench(s => s.doc), logN = useBench(s => s.log.length);
+  const view3d = useBench(s => s.view3d) && !tray, running = useBench(s => s.running), sel = useBench(s => s.sel), doc = useBench(s => s.doc), logN = useBench(s => s.log.length);
   const [tab, setTab] = useState<Tab | null>(null);
   const playing = useGuide(s => s.playing), acts = useGuide(s => s.acts), base = useGuide(s => s.base), needs = pending(acts, base, doc, () => false).types.length > 0;
   useEffect(() => { if (playing) setTab(null); }, [playing]);
@@ -38,8 +39,8 @@ export function MobileWorkbench({ side, peek, heading }: { side?: ReactNode; pee
   useEffect(() => { if ((tab === 'part' && !sel) || (tab === 'code' && !hasCode)) setTab(null); }, [sel, hasCode, tab]);
   const toggle = (t: Tab) => { if (wireMode) b.setWireMode(false); setTab(cur => cur === t ? null : t); };
   useEffect(() => () => useBench.getState().setWireMode(false), []);
-  const tabs: [Tab, string, string][] = [['parts', '＋', 'Parts'], ...(side ? [['lesson', '✎', 'Lesson'] as [Tab, string, string]] : []), ['part', '⚙', 'Selected'], ...(hasCode ? [['code', '⌨', 'Code'] as [Tab, string, string]] : []), ['log', '≡', `Log${logN ? ` ·${logN}` : ''}`]];
-  const title: Record<Tab, string> = { parts: 'Add a part', lesson: 'Lesson', part: def ? def.name : 'Selected', code: 'Code', log: 'Events', menu: 'Bench' };
+  const tabs: [Tab, string, string][] = tray ? [...(tray.length ? [['parts', '＋', 'Parts'] as [Tab, string, string]] : []), ['lesson', '★', 'Goal']] : [['parts', '＋', 'Parts'], ...(side ? [['lesson', '✎', 'Lesson'] as [Tab, string, string]] : []), ['part', '⚙', 'Selected'], ...(hasCode ? [['code', '⌨', 'Code'] as [Tab, string, string]] : []), ['log', '≡', `Log${logN ? ` ·${logN}` : ''}`]];
+  const title: Record<Tab, string> = { parts: 'Add a part', lesson: tray ? 'Goal' : 'Lesson', part: def ? def.name : 'Selected', code: 'Code', log: 'Events', menu: 'Bench' };
 
   return (
     <div className="mb">
@@ -47,7 +48,7 @@ export function MobileWorkbench({ side, peek, heading }: { side?: ReactNode; pee
         <a href={asset('/')} className="mb-brand" aria-label="Home">⚡</a>
         <div className="mb-title">{heading ?? 'Workbench'}</div>
         <button className={`mb-icon ${running ? 'on' : ''}`} onClick={() => b.setRunning(!running)} aria-label={running ? 'Pause' : 'Run'}>{running ? '❚❚' : '▶'}</button>
-        <div className="wb-seg"><button className={`btn ${!view3d ? 'on' : ''}`} onClick={() => b.setView3d(false)}>2D</button><button className={`btn ${view3d ? 'on' : ''}`} onClick={() => b.setView3d(true)}>3D</button></div>
+        {!tray && <div className="wb-seg"><button className={`btn ${!view3d ? 'on' : ''}`} onClick={() => b.setView3d(false)}>2D</button><button className={`btn ${view3d ? 'on' : ''}`} onClick={() => b.setView3d(true)}>3D</button></div>}
         <button className={`mb-icon ${tab === 'menu' ? 'on' : ''}`} onClick={() => toggle('menu')} aria-label="More">⋯</button>
       </header>
       <div className="mb-stage">
@@ -66,7 +67,7 @@ export function MobileWorkbench({ side, peek, heading }: { side?: ReactNode; pee
               <div className="mb-actions">
                 {sel.kind === 'part' && <button className="btn" onClick={() => b.rotate(sel.id)}>⟳ Rotate</button>}
                 <button className="btn" onClick={() => b.remove(sel)}>🗑 Delete</button>
-                {sel.kind === 'part' && <button className="btn" onClick={() => setTab('part')}>⚙ Settings</button>}
+                {sel.kind === 'part' && !tray && <button className="btn" onClick={() => setTab('part')}>⚙ Settings</button>}
                 {hasCode && <button className="btn" onClick={() => setTab('code')}>⌨ Code</button>}
                 <button className="btn" onClick={() => b.select(null)} aria-label="Deselect">✕</button>
               </div>
@@ -79,12 +80,12 @@ export function MobileWorkbench({ side, peek, heading }: { side?: ReactNode; pee
             <button className="mb-grab" onClick={() => setTab(null)} aria-label="Close" />
             <div className="mb-sheet-head"><b>{title[tab]}</b><button className="mb-icon" onClick={() => setTab(null)} aria-label="Close">✕</button></div>
             <div className="mb-sheet-body">
-              {tab === 'parts' && <Palette onPick={() => setTab(null)} />}
+              {tab === 'parts' && <Palette onPick={() => setTab(null)} only={tray} />}
               {tab === 'lesson' && side}
               {tab === 'part' && <Inspector />}
               {tab === 'code' && <CodePanel />}
               {tab === 'log' && <EventLog />}
-              {tab === 'menu' && <div className="mb-menu"><Toolbar /><div className="mb-acct"><AccountButton /></div><a className="btn" href={asset('/learn/')}>All lessons</a><a className="btn" href={asset('/settings/')}>⚙ Settings</a></div>}
+              {tab === 'menu' && <div className="mb-menu">{tray ? <a className="btn" href={asset('/play/')}>{t('quest.map')}</a> : <Toolbar />}<div className="mb-acct"><AccountButton /></div><a className="btn" href={asset('/learn/')}>All lessons</a><a className="btn" href={asset('/settings/')}>⚙ Settings</a></div>}
             </div>
           </section>
         )}

@@ -14,6 +14,8 @@ if (($b['action'] ?? '') === 'send') {
   $count = function (string $sql, array $args) use ($db): int { $q = $db->prepare($sql); $q->execute($args); return (int) $q->fetchColumn(); };
   if ($count('SELECT COUNT(*) FROM login_codes WHERE email = ? AND created_at > NOW() - INTERVAL 15 MINUTE', [$email]) >= 3) eb_json(['error' => 'Too many codes for this address. Wait 15 minutes and try again.'], 429);
   if ($count('SELECT COUNT(*) FROM login_codes WHERE ip = ? AND created_at > NOW() - INTERVAL 1 HOUR', [$ip]) >= 20) eb_json(['error' => 'Too many sign-in attempts from here. Try again later.'], 429);
+  // Caps total mail so rotating IPs and addresses can't burn the mailbox's daily send limit.
+  if ($count('SELECT COUNT(*) FROM login_codes WHERE created_at > NOW() - INTERVAL 1 HOUR', []) >= 150) { eb_log('email-login', 'hourly cap hit'); eb_json(['error' => 'Sign-in is busy right now. Try again in a little while.'], 429); }
   $db->exec('DELETE FROM login_codes WHERE expires_at < NOW() - INTERVAL 1 DAY');
 
   $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
@@ -39,7 +41,8 @@ if (($b['action'] ?? '') === 'verify') {
     $db->prepare('UPDATE login_codes SET attempts = attempts + 1 WHERE id = ?')->execute([$row['id']]);
     eb_json(['error' => 'That code is not right. Check the email and try again.'], 400);
   }
-  $db->prepare('DELETE FROM login_codes WHERE email = ?')->execute([$email]);
+  // Expire instead of delete, so the send caps still count this code.
+  $db->prepare('UPDATE login_codes SET expires_at = NOW() - INTERVAL 1 SECOND WHERE email = ? AND expires_at > NOW()')->execute([$email]);
 
   $q = $db->prepare('SELECT id FROM users WHERE LOWER(email) = ? ORDER BY id LIMIT 1');
   $q->execute([$email]);
